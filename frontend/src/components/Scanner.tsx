@@ -24,6 +24,7 @@ interface ScannerProps {
 const MAX_DISPLAY = 100 // 最多显示100个模板
 
 function Scanner({ onViewResult }: ScannerProps) {
+  const [taskName, setTaskName] = useState('')
   const [targets, setTargets] = useState('')
   const [templates, setTemplates] = useState<POCTemplate[]>([])
   const [selectedTemplates, setSelectedTemplates] = useState<string[]>([])
@@ -264,6 +265,20 @@ function Scanner({ onViewResult }: ScannerProps) {
         </p>
       </div>
 
+      {/* 任务名称 */}
+      <div className="card p-4">
+        <div className="flex items-center gap-4">
+          <label className="text-sm text-dark-400 whitespace-nowrap">任务名称</label>
+          <input
+            type="text"
+            value={taskName}
+            onChange={(e) => setTaskName(e.target.value)}
+            placeholder="输入任务名称（可选）"
+            className="flex-1"
+          />
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 目标配置 */}
         <div className="card p-6 space-y-4">
@@ -278,7 +293,7 @@ function Scanner({ onViewResult }: ScannerProps) {
             value={targets}
             onChange={(e) => setTargets(e.target.value)}
             placeholder="https://example.com&#10;https://target.com&#10;192.168.1.1"
-            rows={10}
+            rows={8}
             className="w-full font-mono text-sm resize-none"
           />
           <div className="flex items-center justify-between text-sm text-dark-500">

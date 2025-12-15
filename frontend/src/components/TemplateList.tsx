@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { 
   Search, 
   Plus, 
@@ -12,7 +12,9 @@ import {
   User,
   Calendar,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  FolderOpen,
+  Layers
 } from 'lucide-react'
 import { POCTemplate } from '../types'
 import toast from 'react-hot-toast'
@@ -26,6 +28,7 @@ const PAGE_SIZE = 50 // 每页显示数量
 
 function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const [templates, setTemplates] = useState<POCTemplate[]>([])
+  const [allTemplates, setAllTemplates] = useState<POCTemplate[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
@@ -34,6 +37,7 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
+  const [viewMode, setViewMode] = useState<'list' | 'category'>('list')
 
   useEffect(() => {
     loadTemplates()
@@ -51,15 +55,20 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const loadTemplates = useCallback(async () => {
     try {
       setLoading(true)
-      // 优先使用分页API
-      if (window.go?.main?.App?.GetPOCsPaginated) {
-        const result = await window.go.main.App.GetPOCsPaginated(page, PAGE_SIZE)
-        setTemplates(result.templates || [])
-        setTotal(result.total || 0)
-      } else if (window.go?.main?.App?.GetAllPOCs) {
+      // 加载所有模板用于分类视图
+      if (window.go?.main?.App?.GetAllPOCs) {
         const data = await window.go.main.App.GetAllPOCs()
-        setTemplates(data || [])
+        setAllTemplates(data || [])
         setTotal(data?.length || 0)
+        
+        // 列表视图使用分页
+        if (viewMode === 'list') {
+          const start = page * PAGE_SIZE
+          const end = start + PAGE_SIZE
+          setTemplates((data || []).slice(start, end))
+        } else {
+          setTemplates(data || [])
+        }
       }
     } catch (error) {
       toast.error('加载模板失败')
@@ -67,7 +76,18 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [page, viewMode])
+  
+  // 按分类分组的模板
+  const templatesByCategory = useMemo(() => {
+    const grouped: Record<string, POCTemplate[]> = {}
+    allTemplates.forEach(t => {
+      const cat = t.category || '未分类'
+      if (!grouped[cat]) grouped[cat] = []
+      grouped[cat].push(t)
+    })
+    return grouped
+  }, [allTemplates])
 
   const loadCategories = async () => {
     try {
@@ -173,6 +193,31 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          {/* 视图切换 */}
+          <div className="flex rounded-lg overflow-hidden border border-dark-600">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`px-3 py-2 text-sm flex items-center gap-1.5 ${
+                viewMode === 'list' 
+                  ? 'bg-cyber-600 text-white' 
+                  : 'bg-dark-800 text-dark-400 hover:text-white'
+              }`}
+            >
+              <Layers className="w-4 h-4" />
+              列表
+            </button>
+            <button
+              onClick={() => setViewMode('category')}
+              className={`px-3 py-2 text-sm flex items-center gap-1.5 ${
+                viewMode === 'category' 
+                  ? 'bg-cyber-600 text-white' 
+                  : 'bg-dark-800 text-dark-400 hover:text-white'
+              }`}
+            >
+              <FolderOpen className="w-4 h-4" />
+              分类
+            </button>
+          </div>
           <button
             onClick={handleImport}
             className="btn btn-secondary"
@@ -253,20 +298,88 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
         )}
       </div>
 
-      {/* 模板列表 */}
-      <div className="card overflow-hidden">
-        {loading ? (
-          <div className="p-12 text-center text-dark-400">
-            <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin" />
-            <p>加载中...</p>
-          </div>
-        ) : templates.length === 0 ? (
-          <div className="p-12 text-center text-dark-400">
-            <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p className="text-lg mb-2">暂无模板</p>
-            <p className="text-sm">点击"新建模板"开始创建</p>
-          </div>
-        ) : (
+      {/* 模板列表/分类视图 */}
+      {loading ? (
+        <div className="card p-12 text-center text-dark-400">
+          <RefreshCw className="w-8 h-8 mx-auto mb-3 animate-spin" />
+          <p>加载中...</p>
+        </div>
+      ) : allTemplates.length === 0 ? (
+        <div className="card p-12 text-center text-dark-400">
+          <Search className="w-12 h-12 mx-auto mb-3 opacity-50" />
+          <p className="text-lg mb-2">暂无模板</p>
+          <p className="text-sm">点击"新建模板"开始创建</p>
+        </div>
+      ) : viewMode === 'category' ? (
+        /* 分类视图 */
+        <div className="space-y-4">
+          {Object.entries(templatesByCategory).sort(([a], [b]) => a.localeCompare(b)).map(([category, catTemplates]) => (
+            <div key={category} className="card overflow-hidden">
+              <div className="px-4 py-3 bg-dark-800/50 border-b border-dark-700 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <FolderOpen className="w-4 h-4 text-cyber-400" />
+                  <span className="font-medium text-white">{category}</span>
+                  <span className="text-xs text-dark-500 bg-dark-700 px-2 py-0.5 rounded">
+                    {catTemplates.length}
+                  </span>
+                </div>
+              </div>
+              <div className="divide-y divide-dark-700/50">
+                {catTemplates.slice(0, 20).map((template) => (
+                  <div 
+                    key={template.id}
+                    className="px-4 py-3 flex items-center justify-between hover:bg-dark-800/30 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white truncate">
+                          {template.name || template.id}
+                        </span>
+                        <span className={`tag text-xs ${getSeverityClass(template.severity)}`}>
+                          {template.severity || 'info'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-dark-500 truncate mt-0.5">
+                        {template.description || '暂无描述'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <button
+                        onClick={() => onEdit(template)}
+                        className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-cyber-400"
+                        title="编辑"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleExport(template.id)}
+                        className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-blue-400"
+                        title="导出"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(template.id)}
+                        className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-red-400"
+                        title="删除"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {catTemplates.length > 20 && (
+                  <div className="px-4 py-2 text-center text-sm text-dark-500">
+                    还有 {catTemplates.length - 20} 个模板...
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        /* 列表视图 */
+        <div className="card overflow-hidden">
           <table className="data-table">
             <thead>
               <tr>
@@ -353,17 +466,21 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 分页和统计信息 */}
       <div className="flex items-center justify-between text-sm text-dark-500">
-        <span>共 {total} 个模板，当前显示 {templates.length} 个</span>
+        <span>
+          共 {total} 个模板
+          {viewMode === 'category' && `，${Object.keys(templatesByCategory).length} 个分类`}
+          {viewMode === 'list' && `，当前显示 ${templates.length} 个`}
+        </span>
         <div className="flex items-center gap-4">
           <span>
             {filterCategory || filterSeverity ? '已应用过滤条件' : '显示全部'}
           </span>
-          {total > PAGE_SIZE && !searchQuery && !filterCategory && !filterSeverity && (
+          {viewMode === 'list' && total > PAGE_SIZE && !searchQuery && !filterCategory && !filterSeverity && (
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setPage(Math.max(0, page - 1))}
