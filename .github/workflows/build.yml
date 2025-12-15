@@ -9,18 +9,16 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
             platform: windows/amd64
             output: SerenNP-Manager-windows-amd64.exe
           - os: macos-latest
-            platform: darwin/amd64
-            output: SerenNP-Manager-macos-amd64
-          - os: macos-latest
-            platform: darwin/arm64
-            output: SerenNP-Manager-macos-arm64
-          - os: ubuntu-latest
+            platform: darwin/universal
+            output: SerenNP-Manager-macos-universal
+          - os: ubuntu-22.04
             platform: linux/amd64
             output: SerenNP-Manager-linux-amd64
 
@@ -47,7 +45,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev build-essential pkg-config
 
       - name: Build
         run: wails build -platform ${{ matrix.platform }} -o ${{ matrix.output }}
