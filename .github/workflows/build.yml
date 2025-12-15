@@ -40,9 +40,9 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Build
-        run: wails build -platform darwin/universal -o SerenNP-Manager-macos.app
+        run: wails build -platform darwin/universal
       - name: Zip App
-        run: cd build/bin && zip -r SerenNP-Manager-macos.zip SerenNP-Manager-macos.app
+        run: cd build/bin && zip -r SerenNP-Manager-macos.zip *.app
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
