@@ -18,6 +18,8 @@ interface TemplateListProps {
   onNew: () => void;
 }
 
+const PAGE_SIZE = 50 // 每页显示数量
+
 function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const [allTemplates, setAllTemplates] = useState<POCTemplate[]>([])
   const [loading, setLoading] = useState(true)
@@ -25,6 +27,7 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const [filterSeverity, setFilterSeverity] = useState('')
   const [showFilters, setShowFilters] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string>('')
+  const [categoryPage, setCategoryPage] = useState(1) // 分类内分页
 
   useEffect(() => {
     loadTemplates()
@@ -147,10 +150,24 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
     return classes[severity?.toLowerCase()] || 'severity-info'
   }
 
-  // 当前选中分类的模板
-  const currentTemplates = selectedCategory 
+  // 当前选中分类的所有模板
+  const allCategoryTemplates = selectedCategory 
     ? templatesByCategory[selectedCategory] || []
     : []
+
+  // 分页后的模板（只显示当前页数量）
+  const currentTemplates = useMemo(() => {
+    return allCategoryTemplates.slice(0, categoryPage * PAGE_SIZE)
+  }, [allCategoryTemplates, categoryPage])
+
+  // 是否还有更多模板
+  const hasMoreTemplates = currentTemplates.length < allCategoryTemplates.length
+
+  // 选择分类时重置页码
+  const handleSelectCategory = useCallback((category: string) => {
+    setSelectedCategory(category)
+    setCategoryPage(1)
+  }, [])
 
   return (
     <div className="p-8 space-y-6">
@@ -194,6 +211,7 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
               onChange={(e) => {
                 setSearchQuery(e.target.value)
                 setSelectedCategory('')
+                setCategoryPage(1)
               }}
               className="w-full pl-10"
             />
@@ -217,6 +235,7 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
               onChange={(e) => {
                 setFilterSeverity(e.target.value)
                 setSelectedCategory('')
+                setCategoryPage(1)
               }}
               className="min-w-[150px]"
             >
@@ -232,6 +251,7 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
                 setFilterSeverity('')
                 setSearchQuery('')
                 setSelectedCategory('')
+                setCategoryPage(1)
               }}
               className="text-dark-400 hover:text-dark-200 text-sm"
             >
@@ -267,7 +287,7 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
                 {sortedCategories.map(([category, catTemplates]) => (
                   <button
                     key={category}
-                    onClick={() => setSelectedCategory(category)}
+                    onClick={() => handleSelectCategory(category)}
                     className={`w-full px-4 py-2.5 flex items-center justify-between transition-colors text-left ${
                       selectedCategory === category
                         ? 'bg-cyber-600/20 text-cyber-400'
@@ -302,7 +322,7 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
                     <FolderOpen className="w-4 h-4 text-cyber-400" />
                     <span className="font-medium text-white">{selectedCategory}</span>
                     <span className="text-xs text-dark-500 bg-dark-700 px-2 py-0.5 rounded">
-                      {currentTemplates.length} 个模板
+                      {currentTemplates.length} / {allCategoryTemplates.length} 个模板
                     </span>
                   </div>
                 </div>
@@ -350,6 +370,17 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
                       </div>
                     </div>
                   ))}
+                  {/* 加载更多按钮 */}
+                  {hasMoreTemplates && (
+                    <div className="px-4 py-3 text-center">
+                      <button
+                        onClick={() => setCategoryPage(p => p + 1)}
+                        className="text-sm text-cyber-400 hover:text-cyber-300 transition-colors"
+                      >
+                        加载更多（已显示 {currentTemplates.length} / {allCategoryTemplates.length}）
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
