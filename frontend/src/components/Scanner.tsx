@@ -31,6 +31,7 @@ function Scanner({ onViewResult }: ScannerProps) {
   const [scanning, setScanning] = useState(false)
   const [expandedScans, setExpandedScans] = useState<string[]>([])
   const [templateSearch, setTemplateSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -38,21 +39,53 @@ function Scanner({ onViewResult }: ScannerProps) {
     loadScans()
   }, [])
 
+  // 获取所有分类
+  const categories = useMemo(() => {
+    const cats = new Set<string>()
+    templates.forEach(t => {
+      if (t.category) cats.add(t.category)
+    })
+    return Array.from(cats).sort()
+  }, [templates])
+
   // 过滤后的模板（使用 useMemo 避免重复计算）
   const filteredTemplates = useMemo(() => {
-    if (!templateSearch.trim()) {
-      return templates.slice(0, MAX_DISPLAY)
+    let filtered = templates
+    
+    // 按分类过滤
+    if (categoryFilter) {
+      filtered = filtered.filter(t => t.category === categoryFilter)
     }
-    const search = templateSearch.toLowerCase()
-    return templates
-      .filter(t => 
+    
+    // 按搜索词过滤
+    if (templateSearch.trim()) {
+      const search = templateSearch.toLowerCase()
+      filtered = filtered.filter(t => 
         t.name?.toLowerCase().includes(search) ||
         t.id?.toLowerCase().includes(search) ||
-        t.category?.toLowerCase().includes(search) ||
         t.severity?.toLowerCase().includes(search)
       )
-      .slice(0, MAX_DISPLAY)
-  }, [templates, templateSearch])
+    }
+    
+    return filtered.slice(0, MAX_DISPLAY)
+  }, [templates, templateSearch, categoryFilter])
+  
+  // 当前过滤条件下的所有模板ID（用于全选）
+  const allFilteredIds = useMemo(() => {
+    let filtered = templates
+    if (categoryFilter) {
+      filtered = filtered.filter(t => t.category === categoryFilter)
+    }
+    if (templateSearch.trim()) {
+      const search = templateSearch.toLowerCase()
+      filtered = filtered.filter(t => 
+        t.name?.toLowerCase().includes(search) ||
+        t.id?.toLowerCase().includes(search) ||
+        t.severity?.toLowerCase().includes(search)
+      )
+    }
+    return filtered.map(t => t.id)
+  }, [templates, templateSearch, categoryFilter])
 
   const loadTemplates = async () => {
     setLoading(true)
@@ -140,15 +173,22 @@ function Scanner({ onViewResult }: ScannerProps) {
     )
   }
 
+  // 全选当前过滤条件下的所有模板（不限于显示的100个）
   const selectAllFiltered = () => {
-    const filteredIds = filteredTemplates.map(t => t.id)
-    const allSelected = filteredIds.every(id => selectedTemplates.includes(id))
+    const allSelected = allFilteredIds.every(id => selectedTemplates.includes(id))
     if (allSelected) {
-      // 取消选择当前过滤的模板
-      setSelectedTemplates(prev => prev.filter(id => !filteredIds.includes(id)))
+      setSelectedTemplates(prev => prev.filter(id => !allFilteredIds.includes(id)))
     } else {
-      // 选择当前过滤的所有模板
-      setSelectedTemplates(prev => [...new Set([...prev, ...filteredIds])])
+      setSelectedTemplates(prev => [...new Set([...prev, ...allFilteredIds])])
+    }
+  }
+  
+  // 全选所有本地模板
+  const selectAllTemplates = () => {
+    if (selectedTemplates.length === templates.length) {
+      setSelectedTemplates([])
+    } else {
+      setSelectedTemplates(templates.map(t => t.id))
     }
   }
 
@@ -253,24 +293,48 @@ function Scanner({ onViewResult }: ScannerProps) {
               <FileCode2 className="w-5 h-5 text-cyber-400" />
               <h2 className="text-lg font-semibold text-white">选择模板</h2>
             </div>
-            <button
-              onClick={selectAllFiltered}
-              className="text-sm text-cyber-400 hover:text-cyber-300"
-            >
-              {filteredTemplates.every(t => selectedTemplates.includes(t.id)) ? '取消全选' : '全选当前'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={selectAllFiltered}
+                className="text-xs px-2 py-1 rounded bg-dark-700 text-cyber-400 hover:bg-dark-600"
+              >
+                {allFilteredIds.every(id => selectedTemplates.includes(id)) && allFilteredIds.length > 0 
+                  ? '取消当前' 
+                  : `全选当前 (${allFilteredIds.length})`}
+              </button>
+              <button
+                onClick={selectAllTemplates}
+                className="text-xs px-2 py-1 rounded bg-cyber-600 text-white hover:bg-cyber-500"
+              >
+                {selectedTemplates.length === templates.length && templates.length > 0
+                  ? '取消全部' 
+                  : `全选全部 (${templates.length})`}
+              </button>
+            </div>
           </div>
           
-          {/* 搜索框 */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
-            <input
-              type="text"
-              placeholder="搜索模板名称、分类、严重程度..."
-              value={templateSearch}
-              onChange={(e) => setTemplateSearch(e.target.value)}
-              className="w-full pl-9 py-2 text-sm"
-            />
+          {/* 搜索和分类过滤 */}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
+              <input
+                type="text"
+                placeholder="搜索模板..."
+                value={templateSearch}
+                onChange={(e) => setTemplateSearch(e.target.value)}
+                className="w-full pl-9 py-2 text-sm"
+              />
+            </div>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="min-w-[120px] py-2 text-sm"
+            >
+              <option value="">全部分类</option>
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
           </div>
 
           <div className="h-52 overflow-y-auto space-y-1">
@@ -321,11 +385,27 @@ function Scanner({ onViewResult }: ScannerProps) {
             )}
           </div>
           <div className="flex items-center justify-between text-sm text-dark-500">
-            <span>已选择 {selectedTemplates.length} 个</span>
+            <span>已选择 {selectedTemplates.length} 个模板</span>
             <span>
-              {templateSearch ? `显示 ${filteredTemplates.length} / ${templates.length}` : `共 ${templates.length} 个`}
-              {templates.length > MAX_DISPLAY && !templateSearch && ` (最多显示 ${MAX_DISPLAY})`}
+              {(templateSearch || categoryFilter) 
+                ? `筛选 ${allFilteredIds.length} 个，显示 ${filteredTemplates.length}` 
+                : `共 ${templates.length} 个`}
+              {filteredTemplates.length < allFilteredIds.length && ` (显示前 ${MAX_DISPLAY})`}
             </span>
+          </div>
+        </div>
+      </div>
+
+      {/* 提示信息 */}
+      <div className="card p-4 bg-yellow-500/10 border-yellow-500/30">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="text-yellow-400 font-medium">测试模式</p>
+            <p className="text-dark-400 mt-1">
+              当前扫描器为模拟模式，用于 UI 测试。真正的 Nuclei 扫描功能需要集成 Nuclei SDK。
+              如需真实扫描，请使用 nuclei 命令行工具配合本地模板目录。
+            </p>
           </div>
         </div>
       </div>
@@ -334,7 +414,7 @@ function Scanner({ onViewResult }: ScannerProps) {
       <div className="flex justify-center">
         <button
           onClick={handleStartScan}
-          disabled={scanning}
+          disabled={scanning || selectedTemplates.length === 0}
           className="btn btn-primary px-12 py-4 text-lg disabled:opacity-50"
         >
           {scanning ? (
@@ -345,7 +425,7 @@ function Scanner({ onViewResult }: ScannerProps) {
           ) : (
             <>
               <Zap className="w-5 h-5" />
-              启动扫描
+              启动扫描 ({selectedTemplates.length} 个模板)
             </>
           )}
         </button>
