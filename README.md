@@ -298,7 +298,7 @@ git push origin v1.0.0
 # 方法 1：系统偏好设置 → 安全性与隐私 → 仍要打开
 
 # 方法 2：移除隔离属性
-xattr -d con.apple.quarantine /Application/SerenNP-Manager.app
+xattr -d con.apple.quarantine /Applications/SerenNP-Manager.app
 ```
 
 ### Linux 启动失败？
