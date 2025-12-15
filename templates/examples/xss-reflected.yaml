@@ -1,0 +1,33 @@
+id: xss-reflected-basic
+
+info:
+  name: Reflected XSS Detection
+  author: nuclei-poc-manager
+  severity: medium
+  description: Detects basic reflected XSS vulnerabilities
+  reference:
+    - https://owasp.org/www-community/attacks/xss/
+  tags: xss,injection,web
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?search=<script>alert(1)</script>"
+      - "{{BaseURL}}/?q=<img%20src=x%20onerror=alert(1)>"
+      - "{{BaseURL}}/?name=<svg%20onload=alert(1)>"
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+      
+      - type: word
+        words:
+          - "<script>alert(1)</script>"
+          - "<img src=x onerror=alert(1)>"
+          - "<svg onload=alert(1)>"
+        condition: or
+        part: body
+
+

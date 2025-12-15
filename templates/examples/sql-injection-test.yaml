@@ -1,0 +1,40 @@
+id: sql-injection-error-based
+
+info:
+  name: SQL Injection Error Based Detection
+  author: nuclei-poc-manager
+  severity: high
+  description: Detects SQL injection vulnerabilities based on error messages
+  reference:
+    - https://owasp.org/www-community/attacks/SQL_Injection
+  tags: sqli,injection,database
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/?id=1'"
+      - "{{BaseURL}}/?id=1%22"
+      - "{{BaseURL}}/?id=1%27%20OR%20%271%27=%271"
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - "SQL syntax"
+          - "mysql_fetch"
+          - "ORA-01756"
+          - "SQLite3::"
+          - "PostgreSQL"
+          - "Microsoft SQL Server"
+          - "ODBC Driver"
+          - "syntax error"
+          - "unterminated quoted string"
+        condition: or
+        part: body
+
+      - type: regex
+        regex:
+          - "(?i)(sql|mysql|oracle|postgres|sqlite|mssql).*(error|exception|syntax)"
+        part: body
+
+

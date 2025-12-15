@@ -1,0 +1,256 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全局性能优化 */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* GPU 加速常用元素 */
+.card, .btn, .tag {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* 自定义滚动条 - 使用淡青色调 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* 选中文本颜色 - 薄荷绿 */
+::selection {
+  background: rgba(78, 205, 196, 0.3);
+  color: #fff;
+}
+
+/* 输入框样式 */
+input, textarea, select {
+  @apply bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-dark-100 
+         focus:outline-none focus:border-cyber-500 focus:ring-1 focus:ring-cyber-500/50;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input::placeholder, textarea::placeholder {
+  @apply text-dark-500;
+}
+
+/* 按钮基础样式 - 优化过渡 */
+.btn {
+  @apply px-4 py-2 rounded-lg font-medium flex items-center gap-2 justify-center;
+  transition: transform 0.1s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  will-change: transform;
+}
+
+.btn:active {
+  transform: scale(0.98);
+}
+
+.btn-primary {
+  @apply bg-gradient-to-r from-cyber-600 to-cyber-500 text-white 
+         shadow-lg shadow-cyber-500/25 hover:shadow-cyber-500/40;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.1);
+}
+
+.btn-secondary {
+  @apply bg-dark-700 text-dark-200 border border-dark-600
+         hover:bg-dark-600 hover:border-dark-500;
+}
+
+.btn-danger {
+  @apply bg-gradient-to-r from-accent-600 to-accent-500 text-white;
+}
+
+.btn-danger:hover {
+  filter: brightness(1.1);
+}
+
+.btn-sm {
+  @apply px-3 py-1.5 text-sm;
+}
+
+/* 卡片样式 - 带有淡紫色调 */
+.card {
+  @apply bg-dark-800/80 backdrop-blur-sm border border-dark-700/50 rounded-xl;
+  will-change: transform;
+}
+
+/* 严重程度标签 */
+.severity-critical {
+  @apply bg-accent-500/20 text-accent-400 border-accent-500/30;
+}
+
+.severity-high {
+  @apply bg-orange-500/20 text-orange-400 border-orange-500/30;
+}
+
+.severity-medium {
+  @apply bg-yellow-500/20 text-yellow-400 border-yellow-500/30;
+}
+
+.severity-low {
+  @apply bg-violet-500/20 text-violet-400 border-violet-500/30;
+}
+
+.severity-info {
+  @apply bg-cyber-500/20 text-cyber-400 border-cyber-500/30;
+}
+
+/* 优化动画 - 使用 GPU 加速 */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translate3d(-10px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes float {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -5px, 0); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.2s ease-out;
+  will-change: transform, opacity;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.15s ease-out;
+  will-change: opacity;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+  will-change: transform;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+  will-change: transform;
+}
+
+/* 网格背景 - 淡青色，使用 GPU 加速 */
+.grid-bg {
+  background-image: 
+    linear-gradient(rgba(78, 205, 196, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(78, 205, 196, 0.02) 1px, transparent 1px);
+  background-size: 50px 50px;
+  will-change: transform;
+}
+
+/* Monaco Editor 容器 */
+.monaco-container {
+  @apply rounded-lg overflow-hidden border border-dark-600;
+}
+
+/* 表格样式 */
+.data-table {
+  @apply w-full;
+}
+
+.data-table th {
+  @apply text-left text-dark-400 font-medium text-sm px-4 py-3 
+         border-b border-dark-700 bg-dark-800/50;
+}
+
+.data-table td {
+  @apply px-4 py-3 border-b border-dark-700/50;
+}
+
+.data-table tr {
+  transition: background-color 0.1s ease;
+}
+
+.data-table tr:hover td {
+  @apply bg-dark-700/30;
+}
+
+/* 标签样式 */
+.tag {
+  @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border;
+  transition: background-color 0.1s ease;
+}
+
+/* 自定义渐变背景 */
+.bg-gradient-main {
+  background: linear-gradient(135deg, #0a0c10 0%, #111827 50%, #1f2937 100%);
+}
+
+/* 玻璃效果 */
+.glass {
+  @apply bg-white/5 backdrop-blur-md border border-white/10;
+}
+
+/* 发光效果 */
+.glow-cyber {
+  box-shadow: 0 0 20px rgba(78, 205, 196, 0.3);
+}
+
+.glow-accent {
+  box-shadow: 0 0 20px rgba(228, 85, 119, 0.3);
+}
+
+.glow-violet {
+  box-shadow: 0 0 20px rgba(139, 124, 246, 0.3);
+}
+
+/* 优化过渡效果 */
+.transition-fast {
+  transition: all 0.1s ease;
+}
+
+.transition-normal {
+  transition: all 0.15s ease;
+}
+
+/* 虚拟滚动容器 */
+.virtual-scroll {
+  contain: strict;
+  will-change: scroll-position;
+}
+
+/* 减少重排 */
+.contain-layout {
+  contain: layout;
+}
+
+.contain-paint {
+  contain: paint;
+}

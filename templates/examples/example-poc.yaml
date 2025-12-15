@@ -1,0 +1,40 @@
+id: example-poc-template
+
+info:
+  name: Example POC Template
+  author: nuclei-poc-manager
+  severity: info
+  description: |
+    This is an example POC template to demonstrate the structure.
+    Modify this template to create your own vulnerability checks.
+  reference:
+    - https://github.com/projectdiscovery/nuclei
+  tags: example,demo
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/"
+      - "{{BaseURL}}/robots.txt"
+    
+    matchers-condition: or
+    matchers:
+      - type: status
+        status:
+          - 200
+          - 301
+          - 302
+      
+      - type: word
+        words:
+          - "Disallow:"
+        part: body
+    
+    extractors:
+      - type: regex
+        name: server
+        part: header
+        regex:
+          - "Server: ([a-zA-Z0-9.-]+)"
+
+
