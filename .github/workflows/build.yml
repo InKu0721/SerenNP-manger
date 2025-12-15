@@ -20,12 +20,12 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Build
-        run: wails build -platform windows/amd64
+        run: wails build -platform windows/amd64 -o SerenNP-Manager-windows.exe
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: SerenNP-Manager-windows
-          path: build/bin/*.exe
+          path: build/bin/SerenNP-Manager-windows.exe
 
   build-macos:
     runs-on: macos-latest
@@ -40,14 +40,14 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Build
-        run: wails build -platform darwin/universal
+        run: wails build -platform darwin/universal -o SerenNP-Manager-macos.app
       - name: Zip App
-        run: cd build/bin && zip -r SerenNP-Manager-macos.zip *.app
+        run: cd build/bin && zip -r SerenNP-Manager-macos.zip SerenNP-Manager-macos.app
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: SerenNP-Manager-macos
-          path: build/bin/*.zip
+          path: build/bin/SerenNP-Manager-macos.zip
 
   build-linux:
     runs-on: ubuntu-22.04
@@ -66,12 +66,12 @@ jobs:
       - name: Install Wails
         run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
       - name: Build
-        run: wails build -platform linux/amd64
+        run: wails build -platform linux/amd64 -o SerenNP-Manager-linux
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: SerenNP-Manager-linux
-          path: build/bin/*
+          path: build/bin/SerenNP-Manager-linux
 
   release:
     needs: [build-windows, build-macos, build-linux]
