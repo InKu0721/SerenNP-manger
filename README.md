@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <strong>现代化的 POC 漏洞检测模板管理工具</strong>
+  <strong>牛逼的 POC 漏洞检测模板管理工具</strong>
 </p>
 
 <p align="center">
@@ -298,7 +298,7 @@ git push origin v1.0.0
 # 方法 1：系统偏好设置 → 安全性与隐私 → 仍要打开
 
 # 方法 2：移除隔离属性
-xattr -cr SerenNP-Manager-macos-*
+xattr -d con.apple.quarantine /Application/SerenNP-Manager.app
 ```
 
 ### Linux 启动失败？
