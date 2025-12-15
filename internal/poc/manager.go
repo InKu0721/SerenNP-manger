@@ -1,6 +1,7 @@
 package poc
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,7 @@ type Manager struct {
 	templatesDir string
 	cache        map[string]models.POCTemplate
 	mu           sync.RWMutex
+	loaded       bool
 }
 
 // NucleiTemplate Nuclei模板结构（用于解析YAML）
@@ -37,8 +39,10 @@ func NewManager(templatesDir string) *Manager {
 	m := &Manager{
 		templatesDir: templatesDir,
 		cache:        make(map[string]models.POCTemplate),
+		loaded:       false,
 	}
-	m.loadAll()
+	// 异步加载，不阻塞启动
+	go m.loadAllLazy()
 	return m
 }
 
@@ -47,8 +51,8 @@ func (m *Manager) GetTemplatesDir() string {
 	return m.templatesDir
 }
 
-// loadAll 加载所有模板
-func (m *Manager) loadAll() error {
+// loadAllLazy 延迟加载所有模板（只加载元数据，不读取完整内容）
+func (m *Manager) loadAllLazy() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -65,7 +69,8 @@ func (m *Manager) loadAll() error {
 			return nil
 		}
 
-		template, err := m.loadFile(path)
+		// 只加载元数据，不读取完整内容
+		template, err := m.loadFileMetadata(path, info)
 		if err != nil {
 			return nil
 		}
@@ -74,10 +79,63 @@ func (m *Manager) loadAll() error {
 		return nil
 	})
 
+	m.loaded = true
 	return err
 }
 
-// loadFile 加载单个模板文件
+// loadAll 加载所有模板（兼容旧接口）
+func (m *Manager) loadAll() error {
+	return m.loadAllLazy()
+}
+
+// loadFileMetadata 只加载文件元数据（快速扫描前100行）
+func (m *Manager) loadFileMetadata(path string, info os.FileInfo) (*models.POCTemplate, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// 只读取前100行来解析元数据
+	scanner := bufio.NewScanner(file)
+	var lines []string
+	lineCount := 0
+	for scanner.Scan() && lineCount < 100 {
+		lines = append(lines, scanner.Text())
+		lineCount++
+	}
+
+	content := strings.Join(lines, "\n")
+	template, err := m.parseYAMLContent(content)
+	if err != nil {
+		// 如果解析失败，尝试从文件名生成ID
+		template = &models.POCTemplate{
+			ID:   strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)),
+			Name: strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)),
+		}
+	}
+
+	template.FilePath = path
+	// 不存储完整内容，需要时再读取
+	template.Content = ""
+
+	// 从路径提取分类
+	relPath, _ := filepath.Rel(m.templatesDir, path)
+	parts := strings.Split(relPath, string(os.PathSeparator))
+	if len(parts) > 1 {
+		template.Category = parts[0]
+	}
+
+	// 使用传入的文件信息
+	if info != nil {
+		template.UpdatedAt = info.ModTime()
+		template.CreatedAt = info.ModTime()
+	}
+
+	return template, nil
+}
+
+// loadFile 加载单个模板文件（完整内容）
 func (m *Manager) loadFile(path string) (*models.POCTemplate, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -174,7 +232,7 @@ func (m *Manager) ToYAML(template models.POCTemplate) (string, error) {
 	return string(output), nil
 }
 
-// GetAll 获取所有模板
+// GetAll 获取所有模板（只返回元数据，不包含完整内容）
 func (m *Manager) GetAll() ([]models.POCTemplate, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -187,17 +245,58 @@ func (m *Manager) GetAll() ([]models.POCTemplate, error) {
 	return templates, nil
 }
 
-// GetByID 根据ID获取模板
-func (m *Manager) GetByID(id string) (*models.POCTemplate, error) {
+// GetAllPaginated 分页获取模板
+func (m *Manager) GetAllPaginated(page, pageSize int) ([]models.POCTemplate, int, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
+	total := len(m.cache)
+	templates := make([]models.POCTemplate, 0, pageSize)
+	
+	i := 0
+	start := page * pageSize
+	end := start + pageSize
+	
+	for _, t := range m.cache {
+		if i >= start && i < end {
+			templates = append(templates, t)
+		}
+		i++
+		if i >= end {
+			break
+		}
+	}
+
+	return templates, total, nil
+}
+
+// GetByID 根据ID获取模板（包含完整内容）
+func (m *Manager) GetByID(id string) (*models.POCTemplate, error) {
+	m.mu.RLock()
 	template, ok := m.cache[id]
+	m.mu.RUnlock()
+
 	if !ok {
 		return nil, fmt.Errorf("模板不存在: %s", id)
 	}
 
+	// 如果没有内容，从文件读取
+	if template.Content == "" && template.FilePath != "" {
+		content, err := os.ReadFile(template.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		template.Content = string(content)
+	}
+
 	return &template, nil
+}
+
+// GetCount 获取模板总数
+func (m *Manager) GetCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.cache)
 }
 
 // Save 保存模板

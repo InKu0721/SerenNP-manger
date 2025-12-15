@@ -51,6 +51,25 @@ func (a *App) GetAllPOCs() ([]models.POCTemplate, error) {
 	return a.pocManager.GetAll()
 }
 
+// GetPOCsPaginated 分页获取POC模板
+func (a *App) GetPOCsPaginated(page, pageSize int) (map[string]interface{}, error) {
+	templates, total, err := a.pocManager.GetAllPaginated(page, pageSize)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"templates": templates,
+		"total":     total,
+		"page":      page,
+		"pageSize":  pageSize,
+	}, nil
+}
+
+// GetPOCCount 获取POC总数
+func (a *App) GetPOCCount() int {
+	return a.pocManager.GetCount()
+}
+
 // GetPOCByID 根据ID获取POC
 func (a *App) GetPOCByID(id string) (*models.POCTemplate, error) {
 	return a.pocManager.GetByID(id)

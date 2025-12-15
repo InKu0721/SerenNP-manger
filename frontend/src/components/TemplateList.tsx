@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { 
   Search, 
   Plus, 
@@ -10,7 +10,9 @@ import {
   RefreshCw,
   Tag,
   User,
-  Calendar
+  Calendar,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { POCTemplate } from '../types'
 import toast from 'react-hot-toast'
@@ -20,6 +22,8 @@ interface TemplateListProps {
   onNew: () => void;
 }
 
+const PAGE_SIZE = 50 // 每页显示数量
+
 function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const [templates, setTemplates] = useState<POCTemplate[]>([])
   const [loading, setLoading] = useState(true)
@@ -28,6 +32,8 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const [filterSeverity, setFilterSeverity] = useState('')
   const [categories, setCategories] = useState<string[]>([])
   const [showFilters, setShowFilters] = useState(false)
+  const [page, setPage] = useState(0)
+  const [total, setTotal] = useState(0)
 
   useEffect(() => {
     loadTemplates()
@@ -40,14 +46,20 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
     } else {
       loadTemplates()
     }
-  }, [searchQuery, filterCategory, filterSeverity])
+  }, [searchQuery, filterCategory, filterSeverity, page])
 
-  const loadTemplates = async () => {
+  const loadTemplates = useCallback(async () => {
     try {
       setLoading(true)
-      if (window.go?.main?.App?.GetAllPOCs) {
+      // 优先使用分页API
+      if (window.go?.main?.App?.GetPOCsPaginated) {
+        const result = await window.go.main.App.GetPOCsPaginated(page, PAGE_SIZE)
+        setTemplates(result.templates || [])
+        setTotal(result.total || 0)
+      } else if (window.go?.main?.App?.GetAllPOCs) {
         const data = await window.go.main.App.GetAllPOCs()
         setTemplates(data || [])
+        setTotal(data?.length || 0)
       }
     } catch (error) {
       toast.error('加载模板失败')
@@ -55,7 +67,7 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
     } finally {
       setLoading(false)
     }
-  }
+  }, [page])
 
   const loadCategories = async () => {
     try {
@@ -344,12 +356,35 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
         )}
       </div>
 
-      {/* 统计信息 */}
+      {/* 分页和统计信息 */}
       <div className="flex items-center justify-between text-sm text-dark-500">
-        <span>共 {templates.length} 个模板</span>
-        <span>
-          {filterCategory || filterSeverity ? '已应用过滤条件' : '显示全部'}
-        </span>
+        <span>共 {total} 个模板，当前显示 {templates.length} 个</span>
+        <div className="flex items-center gap-4">
+          <span>
+            {filterCategory || filterSeverity ? '已应用过滤条件' : '显示全部'}
+          </span>
+          {total > PAGE_SIZE && !searchQuery && !filterCategory && !filterSeverity && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage(Math.max(0, page - 1))}
+                disabled={page === 0}
+                className="p-1 rounded hover:bg-dark-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-dark-400">
+                第 {page + 1} / {Math.ceil(total / PAGE_SIZE)} 页
+              </span>
+              <button
+                onClick={() => setPage(page + 1)}
+                disabled={(page + 1) * PAGE_SIZE >= total}
+                className="p-1 rounded hover:bg-dark-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
