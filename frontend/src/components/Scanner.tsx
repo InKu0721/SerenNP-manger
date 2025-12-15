@@ -31,10 +31,7 @@ function Scanner({ onViewResult }: ScannerProps) {
   useEffect(() => {
     loadTemplates()
     loadScans()
-    
-    // 降低刷新频率，减少卡顿
-    const interval = setInterval(loadScans, 3000)
-    return () => clearInterval(interval)
+    // 只在打开时加载一次，不再定时刷新
   }, [])
 
   const loadTemplates = async () => {
