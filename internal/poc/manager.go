@@ -41,9 +41,16 @@ func NewManager(templatesDir string) *Manager {
 		cache:        make(map[string]models.POCTemplate),
 		loaded:       false,
 	}
-	// 异步加载，不阻塞启动
-	go m.loadAllLazy()
+	// 同步加载，确保模板在使用前已加载
+	m.loadAllLazy()
 	return m
+}
+
+// IsLoaded 检查模板是否已加载完成
+func (m *Manager) IsLoaded() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.loaded
 }
 
 // GetTemplatesDir 获取模板目录

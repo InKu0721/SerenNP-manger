@@ -32,8 +32,8 @@ function Scanner({ onViewResult }: ScannerProps) {
     loadTemplates()
     loadScans()
     
-    // 更频繁地刷新扫描状态
-    const interval = setInterval(loadScans, 1000)
+    // 降低刷新频率，减少卡顿
+    const interval = setInterval(loadScans, 3000)
     return () => clearInterval(interval)
   }, [])
 

@@ -165,12 +165,41 @@ function Settings() {
           </div>
           <div>
             <h2 className="text-lg font-semibold text-white">模板目录</h2>
-            <p className="text-sm text-dark-400">POC 模板存储位置</p>
+            <p className="text-sm text-dark-400">POC 模板存储位置（修改后需重新加载）</p>
           </div>
         </div>
-        <div className="p-4 rounded-lg bg-dark-900/50 border border-dark-700/50 font-mono text-sm text-dark-300">
-          {settings.templatesDir || '未设置'}
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={settings.templatesDir}
+            onChange={(e) => setSettings(prev => ({ ...prev, templatesDir: e.target.value }))}
+            placeholder="输入模板目录路径"
+            className="flex-1 font-mono text-sm"
+          />
+          <button
+            onClick={async () => {
+              if (!settings.templatesDir) {
+                toast.error('请输入模板目录')
+                return
+              }
+              try {
+                if (window.go?.main?.App?.ReloadTemplates) {
+                  await window.go.main.App.ReloadTemplates(settings.templatesDir)
+                  toast.success('模板已重新加载')
+                }
+              } catch (error: any) {
+                toast.error('加载失败: ' + (error?.message || '目录无效'))
+              }
+            }}
+            className="btn btn-secondary"
+          >
+            <RefreshCw className="w-4 h-4" />
+            重新加载
+          </button>
         </div>
+        <p className="mt-3 text-xs text-dark-500">
+          提示：可设置为 Nuclei 模板目录，如 ~/.local/nuclei-templates 或 C:\Users\xxx\nuclei-templates
+        </p>
       </div>
 
       {/* 设置区块 */}

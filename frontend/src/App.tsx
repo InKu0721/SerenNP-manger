@@ -49,6 +49,7 @@ declare global {
           GetStats: () => Promise<Stats>;
           SaveSettings: (settings: any) => Promise<void>;
           LoadSettings: () => Promise<any>;
+          ReloadTemplates: (templatesDir: string) => Promise<void>;
         };
       };
     };

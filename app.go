@@ -32,12 +32,40 @@ func (a *App) startup(ctx context.Context) {
 
 	homeDir, _ := os.UserHomeDir()
 	dataDir := filepath.Join(homeDir, ".nuclei-poc-manager")
+	
+	// 尝试加载已保存的设置
+	settingsPath := filepath.Join(dataDir, "settings.json")
 	templatesDir := filepath.Join(dataDir, "templates")
+	
+	if data, err := os.ReadFile(settingsPath); err == nil {
+		var settings models.Settings
+		if json.Unmarshal(data, &settings) == nil && settings.TemplatesDir != "" {
+			templatesDir = settings.TemplatesDir
+		}
+	}
 
 	os.MkdirAll(templatesDir, 0755)
 
 	a.pocManager = poc.NewManager(templatesDir)
 	a.scanner = scanner.NewScanner()
+}
+
+// ReloadTemplates 重新加载模板（当设置改变时调用）
+func (a *App) ReloadTemplates(templatesDir string) error {
+	if templatesDir == "" {
+		return fmt.Errorf("模板目录不能为空")
+	}
+	
+	// 确保目录存在
+	if _, err := os.Stat(templatesDir); os.IsNotExist(err) {
+		return fmt.Errorf("目录不存在: %s", templatesDir)
+	}
+	
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	
+	a.pocManager = poc.NewManager(templatesDir)
+	return nil
 }
 
 func (a *App) shutdown(ctx context.Context) {
