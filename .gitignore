@@ -6,6 +6,10 @@ frontend/node_modules/
 build/bin/
 frontend/dist/
 
+# Wails temp files
+frontend/package.json.md5
+frontend/package-lock.json.md5
+
 # IDE
 .idea/
 .vscode/
