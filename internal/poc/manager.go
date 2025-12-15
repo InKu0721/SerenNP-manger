@@ -41,8 +41,8 @@ func NewManager(templatesDir string) *Manager {
 		cache:        make(map[string]models.POCTemplate),
 		loaded:       false,
 	}
-	// 同步加载，确保模板在使用前已加载
-	m.loadAllLazy()
+	// 异步加载，加快启动速度
+	go m.loadAllLazy()
 	return m
 }
 

@@ -37,7 +37,8 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [page, setPage] = useState(0)
   const [total, setTotal] = useState(0)
-  const [viewMode, setViewMode] = useState<'list' | 'category'>('list')
+  const [viewMode, setViewMode] = useState<'list' | 'category'>('category')
+  const [selectedCategory, setSelectedCategory] = useState<string>('')
 
   useEffect(() => {
     loadTemplates()
@@ -313,69 +314,121 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
       ) : viewMode === 'category' ? (
         /* 分类视图 */
         <div className="space-y-4">
-          {Object.entries(templatesByCategory).sort(([a], [b]) => a.localeCompare(b)).map(([category, catTemplates]) => (
-            <div key={category} className="card overflow-hidden">
-              <div className="px-4 py-3 bg-dark-800/50 border-b border-dark-700 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <FolderOpen className="w-4 h-4 text-cyber-400" />
-                  <span className="font-medium text-white">{category}</span>
-                  <span className="text-xs text-dark-500 bg-dark-700 px-2 py-0.5 rounded">
-                    {catTemplates.length}
-                  </span>
-                </div>
-              </div>
+          {/* 分类选择标签 */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setSelectedCategory('')}
+              className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                selectedCategory === ''
+                  ? 'bg-cyber-600 text-white'
+                  : 'bg-dark-800 text-dark-400 hover:bg-dark-700 hover:text-white'
+              }`}
+            >
+              全部 ({allTemplates.length})
+            </button>
+            {Object.entries(templatesByCategory).sort(([a], [b]) => a.localeCompare(b)).map(([category, catTemplates]) => (
+              <button
+                key={category}
+                onClick={() => setSelectedCategory(category)}
+                className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  selectedCategory === category
+                    ? 'bg-cyber-600 text-white'
+                    : 'bg-dark-800 text-dark-400 hover:bg-dark-700 hover:text-white'
+                }`}
+              >
+                {category} ({catTemplates.length})
+              </button>
+            ))}
+          </div>
+
+          {/* 选中分类的模板列表 */}
+          <div className="card overflow-hidden">
+            {selectedCategory === '' ? (
+              /* 显示所有分类概览 */
               <div className="divide-y divide-dark-700/50">
-                {catTemplates.slice(0, 20).map((template) => (
+                {Object.entries(templatesByCategory).sort(([a], [b]) => a.localeCompare(b)).map(([category, catTemplates]) => (
                   <div 
-                    key={template.id}
-                    className="px-4 py-3 flex items-center justify-between hover:bg-dark-800/30 transition-colors"
+                    key={category}
+                    onClick={() => setSelectedCategory(category)}
+                    className="px-4 py-3 flex items-center justify-between hover:bg-dark-800/30 transition-colors cursor-pointer"
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-white truncate">
-                          {template.name || template.id}
-                        </span>
-                        <span className={`tag text-xs ${getSeverityClass(template.severity)}`}>
-                          {template.severity || 'info'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-dark-500 truncate mt-0.5">
-                        {template.description || '暂无描述'}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <FolderOpen className="w-5 h-5 text-cyber-400" />
+                      <span className="font-medium text-white">{category}</span>
                     </div>
-                    <div className="flex items-center gap-2 ml-4">
-                      <button
-                        onClick={() => onEdit(template)}
-                        className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-cyber-400"
-                        title="编辑"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleExport(template.id)}
-                        className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-blue-400"
-                        title="导出"
-                      >
-                        <Download className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDelete(template.id)}
-                        className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-red-400"
-                        title="删除"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-dark-500">{catTemplates.length} 个模板</span>
+                      <ChevronRight className="w-4 h-4 text-dark-500" />
                     </div>
                   </div>
                 ))}
-                {catTemplates.length > 20 && (
-                  <div className="px-4 py-2 text-center text-sm text-dark-500">
-                    还有 {catTemplates.length - 20} 个模板...
-                  </div>
-                )}
               </div>
-            </div>
-          ))}
+            ) : (
+              /* 显示选中分类的模板 */
+              <div>
+                <div className="px-4 py-3 bg-dark-800/50 border-b border-dark-700 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4 text-cyber-400" />
+                    <span className="font-medium text-white">{selectedCategory}</span>
+                    <span className="text-xs text-dark-500 bg-dark-700 px-2 py-0.5 rounded">
+                      {templatesByCategory[selectedCategory]?.length || 0}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCategory('')}
+                    className="text-xs text-dark-400 hover:text-white"
+                  >
+                    返回全部
+                  </button>
+                </div>
+                <div className="divide-y divide-dark-700/50 max-h-[600px] overflow-y-auto">
+                  {(templatesByCategory[selectedCategory] || []).map((template) => (
+                    <div 
+                      key={template.id}
+                      className="px-4 py-3 flex items-center justify-between hover:bg-dark-800/30 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-white truncate">
+                            {template.name || template.id}
+                          </span>
+                          <span className={`tag text-xs ${getSeverityClass(template.severity)}`}>
+                            {template.severity || 'info'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-dark-500 truncate mt-0.5">
+                          {template.description || '暂无描述'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-4">
+                        <button
+                          onClick={() => onEdit(template)}
+                          className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-cyber-400"
+                          title="编辑"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleExport(template.id)}
+                          className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-blue-400"
+                          title="导出"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(template.id)}
+                          className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-red-400"
+                          title="删除"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         /* 列表视图 */
