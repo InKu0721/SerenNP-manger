@@ -8,7 +8,9 @@ import {
   Download,
   Upload,
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  FolderPlus,
+  X
 } from 'lucide-react'
 import { POCTemplate } from '../types'
 import toast from 'react-hot-toast'
@@ -28,6 +30,9 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
   const [showFilters, setShowFilters] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string>('')
   const [categoryPage, setCategoryPage] = useState(1) // 分类内分页
+  const [showNewCategoryModal, setShowNewCategoryModal] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [creatingCategory, setCreatingCategory] = useState(false)
 
   useEffect(() => {
     loadTemplates()
@@ -169,6 +174,58 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
     setCategoryPage(1)
   }, [])
 
+  // 创建新分类
+  const handleCreateCategory = async () => {
+    if (!newCategoryName.trim()) {
+      toast.error('请输入分类名称')
+      return
+    }
+    
+    try {
+      setCreatingCategory(true)
+      if (window.go?.main?.App?.CreateCategory) {
+        await window.go.main.App.CreateCategory(newCategoryName.trim())
+        toast.success('分类创建成功')
+        setShowNewCategoryModal(false)
+        setNewCategoryName('')
+        loadTemplates() // 刷新列表
+      }
+    } catch (error: any) {
+      toast.error(error?.message || '创建分类失败')
+    } finally {
+      setCreatingCategory(false)
+    }
+  }
+
+  // 删除分类
+  const handleDeleteCategory = async (categoryName: string) => {
+    if (categoryName === '未分类') {
+      toast.error('无法删除此分类')
+      return
+    }
+    
+    const count = templatesByCategory[categoryName]?.length || 0
+    if (count > 0) {
+      toast.error(`分类"${categoryName}"下还有 ${count} 个模板，无法删除`)
+      return
+    }
+    
+    if (!confirm(`确定要删除分类"${categoryName}"吗？`)) return
+    
+    try {
+      if (window.go?.main?.App?.DeleteCategory) {
+        await window.go.main.App.DeleteCategory(categoryName)
+        toast.success('分类已删除')
+        if (selectedCategory === categoryName) {
+          setSelectedCategory('')
+        }
+        loadTemplates()
+      }
+    } catch (error: any) {
+      toast.error(error?.message || '删除分类失败')
+    }
+  }
+
   return (
     <div className="p-8 space-y-6">
       {/* 页面标题和操作 */}
@@ -280,34 +337,57 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
           {/* 左侧分类列表 */}
           <div className="w-64 flex-shrink-0">
             <div className="card overflow-hidden sticky top-6">
-              <div className="px-4 py-3 bg-dark-800/50 border-b border-dark-700">
+              <div className="px-4 py-3 bg-dark-800/50 border-b border-dark-700 flex items-center justify-between">
                 <span className="font-medium text-white text-sm">分类列表</span>
+                <button
+                  onClick={() => setShowNewCategoryModal(true)}
+                  className="p-1 rounded hover:bg-dark-700 text-dark-400 hover:text-cyber-400 transition-colors"
+                  title="新建分类"
+                >
+                  <FolderPlus className="w-4 h-4" />
+                </button>
               </div>
               <div className="divide-y divide-dark-700/50 max-h-[calc(100vh-300px)] overflow-y-auto">
                 {sortedCategories.map(([category, catTemplates]) => (
-                  <button
+                  <div
                     key={category}
-                    onClick={() => handleSelectCategory(category)}
-                    className={`w-full px-4 py-2.5 flex items-center justify-between transition-colors text-left ${
+                    className={`group px-4 py-2.5 flex items-center justify-between transition-colors ${
                       selectedCategory === category
                         ? 'bg-cyber-600/20 text-cyber-400'
                         : 'hover:bg-dark-800/50 text-dark-300'
                     }`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      onClick={() => handleSelectCategory(category)}
+                      className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                    >
                       <FolderOpen className={`w-4 h-4 flex-shrink-0 ${
                         selectedCategory === category ? 'text-cyber-400' : 'text-dark-500'
                       }`} />
                       <span className="truncate text-sm">{category}</span>
+                    </button>
+                    <div className="flex items-center gap-1">
+                      <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
+                        selectedCategory === category
+                          ? 'bg-cyber-600/30 text-cyber-300'
+                          : 'bg-dark-700 text-dark-500'
+                      }`}>
+                        {catTemplates.length}
+                      </span>
+                      {catTemplates.length === 0 && category !== '未分类' && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleDeleteCategory(category)
+                          }}
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-dark-700 text-dark-500 hover:text-red-400 transition-all"
+                          title="删除空分类"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
-                    <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${
-                      selectedCategory === category
-                        ? 'bg-cyber-600/30 text-cyber-300'
-                        : 'bg-dark-700 text-dark-500'
-                    }`}>
-                      {catTemplates.length}
-                    </span>
-                  </button>
+                  </div>
                 ))}
               </div>
             </div>
@@ -390,6 +470,67 @@ function TemplateList({ onEdit, onNew }: TemplateListProps) {
                 <p className="text-sm">从左侧选择一个分类查看模板</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 新建分类模态框 */}
+      {showNewCategoryModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="card w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-white">新建分类</h3>
+              <button
+                onClick={() => {
+                  setShowNewCategoryModal(false)
+                  setNewCategoryName('')
+                }}
+                className="p-1 rounded hover:bg-dark-700 text-dark-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div>
+              <label className="block text-sm text-dark-400 mb-2">分类名称</label>
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="输入分类名称..."
+                className="w-full"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateCategory()
+                  if (e.key === 'Escape') {
+                    setShowNewCategoryModal(false)
+                    setNewCategoryName('')
+                  }
+                }}
+              />
+              <p className="text-xs text-dark-500 mt-2">
+                分类名称将作为文件夹名称，不能包含特殊字符
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={() => {
+                  setShowNewCategoryModal(false)
+                  setNewCategoryName('')
+                }}
+                className="btn btn-secondary"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleCreateCategory}
+                disabled={creatingCategory || !newCategoryName.trim()}
+                className="btn btn-primary"
+              >
+                {creatingCategory ? '创建中...' : '创建分类'}
+              </button>
+            </div>
           </div>
         </div>
       )}

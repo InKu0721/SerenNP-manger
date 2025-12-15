@@ -36,6 +36,12 @@ declare global {
           UpdatePOC: (template: POCTemplate) => Promise<void>;
           DeletePOC: (id: string) => Promise<void>;
           GetCategories: () => Promise<string[]>;
+          GetCategoriesWithCount: () => Promise<Record<string, number>>;
+          GetPOCsByCategory: (category: string) => Promise<POCTemplate[]>;
+          GetPOCsBySeverity: (severity: string) => Promise<POCTemplate[]>;
+          CreateCategory: (categoryName: string) => Promise<void>;
+          DeleteCategory: (categoryName: string) => Promise<void>;
+          RenameCategory: (oldName: string, newName: string) => Promise<void>;
           SearchPOCs: (query: string, category: string, severity: string) => Promise<POCTemplate[]>;
           ImportPOC: (content: string) => Promise<POCTemplate>;
           ExportPOC: (id: string) => Promise<string>;

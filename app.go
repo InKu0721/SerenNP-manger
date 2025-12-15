@@ -124,24 +124,43 @@ func (a *App) DeletePOC(id string) error {
 
 // GetCategories 获取所有分类
 func (a *App) GetCategories() ([]string, error) {
-	pocs, err := a.pocManager.GetAll()
-	if err != nil {
-		return nil, err
-	}
-
-	categoryMap := make(map[string]bool)
-	for _, p := range pocs {
-		if p.Category != "" {
-			categoryMap[p.Category] = true
-		}
-	}
-
-	categories := make([]string, 0, len(categoryMap))
-	for cat := range categoryMap {
+	catMap := a.pocManager.GetCategoriesWithCount()
+	categories := make([]string, 0, len(catMap))
+	for cat := range catMap {
 		categories = append(categories, cat)
 	}
 	sort.Strings(categories)
 	return categories, nil
+}
+
+// GetCategoriesWithCount 获取所有分类及其模板数量
+func (a *App) GetCategoriesWithCount() map[string]int {
+	return a.pocManager.GetCategoriesWithCount()
+}
+
+// GetPOCsByCategory 根据分类获取模板（使用索引，更快）
+func (a *App) GetPOCsByCategory(category string) []models.POCTemplate {
+	return a.pocManager.GetByCategory(category)
+}
+
+// GetPOCsBySeverity 根据严重性获取模板
+func (a *App) GetPOCsBySeverity(severity string) []models.POCTemplate {
+	return a.pocManager.GetBySeverity(severity)
+}
+
+// CreateCategory 创建新分类
+func (a *App) CreateCategory(categoryName string) error {
+	return a.pocManager.CreateCategory(categoryName)
+}
+
+// DeleteCategory 删除分类
+func (a *App) DeleteCategory(categoryName string) error {
+	return a.pocManager.DeleteCategory(categoryName)
+}
+
+// RenameCategory 重命名分类
+func (a *App) RenameCategory(oldName, newName string) error {
+	return a.pocManager.RenameCategory(oldName, newName)
 }
 
 // SearchPOCs 搜索POC

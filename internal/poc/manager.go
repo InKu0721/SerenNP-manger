@@ -15,10 +15,12 @@ import (
 
 // Manager POC模板管理器
 type Manager struct {
-	templatesDir string
-	cache        map[string]models.POCTemplate
-	mu           sync.RWMutex
-	loaded       bool
+	templatesDir    string
+	cache           map[string]models.POCTemplate     // 主缓存: ID -> Template
+	categoryIndex   map[string][]string               // 分类索引: Category -> []ID
+	severityIndex   map[string][]string               // 严重性索引: Severity -> []ID
+	mu              sync.RWMutex
+	loaded          bool
 }
 
 // NucleiTemplate Nuclei模板结构（用于解析YAML）
@@ -37,9 +39,11 @@ type NucleiTemplate struct {
 // NewManager 创建新的Manager实例
 func NewManager(templatesDir string) *Manager {
 	m := &Manager{
-		templatesDir: templatesDir,
-		cache:        make(map[string]models.POCTemplate),
-		loaded:       false,
+		templatesDir:  templatesDir,
+		cache:         make(map[string]models.POCTemplate),
+		categoryIndex: make(map[string][]string),
+		severityIndex: make(map[string][]string),
+		loaded:        false,
 	}
 	// 异步加载，加快启动速度
 	go m.loadAllLazy()
@@ -63,7 +67,10 @@ func (m *Manager) loadAllLazy() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// 重置所有缓存和索引
 	m.cache = make(map[string]models.POCTemplate)
+	m.categoryIndex = make(map[string][]string)
+	m.severityIndex = make(map[string][]string)
 
 	err := filepath.Walk(m.templatesDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -82,7 +89,23 @@ func (m *Manager) loadAllLazy() error {
 			return nil
 		}
 
+		// 存入主缓存
 		m.cache[template.ID] = *template
+		
+		// 更新分类索引
+		cat := template.Category
+		if cat == "" {
+			cat = "未分类"
+		}
+		m.categoryIndex[cat] = append(m.categoryIndex[cat], template.ID)
+		
+		// 更新严重性索引
+		sev := template.Severity
+		if sev == "" {
+			sev = "info"
+		}
+		m.severityIndex[sev] = append(m.severityIndex[sev], template.ID)
+		
 		return nil
 	})
 
@@ -311,6 +334,9 @@ func (m *Manager) Save(template models.POCTemplate) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	// 获取旧模板（用于更新索引）
+	oldTemplate, existed := m.cache[template.ID]
+
 	// 确定保存路径
 	var filePath string
 	if template.FilePath != "" {
@@ -341,8 +367,61 @@ func (m *Manager) Save(template models.POCTemplate) error {
 		return err
 	}
 
+	// 更新缓存
 	m.cache[template.ID] = template
+
+	// 更新分类索引
+	newCat := template.Category
+	if newCat == "" {
+		newCat = "未分类"
+	}
+	
+	if existed {
+		oldCat := oldTemplate.Category
+		if oldCat == "" {
+			oldCat = "未分类"
+		}
+		// 如果分类变了，从旧索引移除
+		if oldCat != newCat {
+			m.removeFromIndex(m.categoryIndex, oldCat, template.ID)
+			m.categoryIndex[newCat] = append(m.categoryIndex[newCat], template.ID)
+		}
+		// 更新严重性索引
+		oldSev := oldTemplate.Severity
+		if oldSev == "" {
+			oldSev = "info"
+		}
+		newSev := template.Severity
+		if newSev == "" {
+			newSev = "info"
+		}
+		if oldSev != newSev {
+			m.removeFromIndex(m.severityIndex, oldSev, template.ID)
+			m.severityIndex[newSev] = append(m.severityIndex[newSev], template.ID)
+		}
+	} else {
+		// 新模板，添加到索引
+		m.categoryIndex[newCat] = append(m.categoryIndex[newCat], template.ID)
+		newSev := template.Severity
+		if newSev == "" {
+			newSev = "info"
+		}
+		m.severityIndex[newSev] = append(m.severityIndex[newSev], template.ID)
+	}
+
 	return nil
+}
+
+// removeFromIndex 从索引中移除ID
+func (m *Manager) removeFromIndex(index map[string][]string, key, id string) {
+	if ids, ok := index[key]; ok {
+		for i, v := range ids {
+			if v == id {
+				index[key] = append(ids[:i], ids[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 // Delete 删除模板
@@ -361,6 +440,19 @@ func (m *Manager) Delete(id string) error {
 		}
 	}
 
+	// 从索引中移除
+	cat := template.Category
+	if cat == "" {
+		cat = "未分类"
+	}
+	m.removeFromIndex(m.categoryIndex, cat, id)
+	
+	sev := template.Severity
+	if sev == "" {
+		sev = "info"
+	}
+	m.removeFromIndex(m.severityIndex, sev, id)
+
 	delete(m.cache, id)
 	return nil
 }
@@ -370,4 +462,164 @@ func (m *Manager) Refresh() error {
 	return m.loadAll()
 }
 
+// GetByCategory 根据分类快速获取模板（使用索引）
+func (m *Manager) GetByCategory(category string) []models.POCTemplate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	ids, ok := m.categoryIndex[category]
+	if !ok {
+		return nil
+	}
+
+	templates := make([]models.POCTemplate, 0, len(ids))
+	for _, id := range ids {
+		if t, ok := m.cache[id]; ok {
+			templates = append(templates, t)
+		}
+	}
+	return templates
+}
+
+// GetBySeverity 根据严重性快速获取模板（使用索引）
+func (m *Manager) GetBySeverity(severity string) []models.POCTemplate {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	ids, ok := m.severityIndex[severity]
+	if !ok {
+		return nil
+	}
+
+	templates := make([]models.POCTemplate, 0, len(ids))
+	for _, id := range ids {
+		if t, ok := m.cache[id]; ok {
+			templates = append(templates, t)
+		}
+	}
+	return templates
+}
+
+// GetCategoriesWithCount 获取所有分类及其模板数量
+func (m *Manager) GetCategoriesWithCount() map[string]int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make(map[string]int)
+	for cat, ids := range m.categoryIndex {
+		result[cat] = len(ids)
+	}
+	return result
+}
+
+// CreateCategory 创建新分类（创建目录）
+func (m *Manager) CreateCategory(categoryName string) error {
+	if categoryName == "" {
+		return fmt.Errorf("分类名称不能为空")
+	}
+
+	// 检查分类名是否合法（不能包含特殊字符）
+	if strings.ContainsAny(categoryName, `/\:*?"<>|`) {
+		return fmt.Errorf("分类名称不能包含特殊字符")
+	}
+
+	categoryDir := filepath.Join(m.templatesDir, categoryName)
+	
+	// 检查目录是否已存在
+	if _, err := os.Stat(categoryDir); err == nil {
+		return fmt.Errorf("分类已存在: %s", categoryName)
+	}
+
+	// 创建目录
+	if err := os.MkdirAll(categoryDir, 0755); err != nil {
+		return fmt.Errorf("创建分类目录失败: %v", err)
+	}
+
+	// 更新索引（即使目录为空也要记录）
+	m.mu.Lock()
+	if _, ok := m.categoryIndex[categoryName]; !ok {
+		m.categoryIndex[categoryName] = []string{}
+	}
+	m.mu.Unlock()
+
+	return nil
+}
+
+// DeleteCategory 删除分类（仅删除空分类）
+func (m *Manager) DeleteCategory(categoryName string) error {
+	if categoryName == "" || categoryName == "未分类" {
+		return fmt.Errorf("无法删除此分类")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// 检查分类是否有模板
+	if ids, ok := m.categoryIndex[categoryName]; ok && len(ids) > 0 {
+		return fmt.Errorf("分类不为空，无法删除")
+	}
+
+	categoryDir := filepath.Join(m.templatesDir, categoryName)
+	
+	// 删除目录
+	if err := os.Remove(categoryDir); err != nil {
+		return fmt.Errorf("删除分类目录失败: %v", err)
+	}
+
+	// 从索引中移除
+	delete(m.categoryIndex, categoryName)
+
+	return nil
+}
+
+// RenameCategory 重命名分类
+func (m *Manager) RenameCategory(oldName, newName string) error {
+	if oldName == "" || newName == "" {
+		return fmt.Errorf("分类名称不能为空")
+	}
+	if oldName == "未分类" {
+		return fmt.Errorf("无法重命名此分类")
+	}
+	if strings.ContainsAny(newName, `/\:*?"<>|`) {
+		return fmt.Errorf("分类名称不能包含特殊字符")
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	oldDir := filepath.Join(m.templatesDir, oldName)
+	newDir := filepath.Join(m.templatesDir, newName)
+
+	// 检查旧目录是否存在
+	if _, err := os.Stat(oldDir); os.IsNotExist(err) {
+		return fmt.Errorf("分类不存在: %s", oldName)
+	}
+
+	// 检查新目录是否已存在
+	if _, err := os.Stat(newDir); err == nil {
+		return fmt.Errorf("目标分类已存在: %s", newName)
+	}
+
+	// 重命名目录
+	if err := os.Rename(oldDir, newDir); err != nil {
+		return fmt.Errorf("重命名失败: %v", err)
+	}
+
+	// 更新索引
+	if ids, ok := m.categoryIndex[oldName]; ok {
+		m.categoryIndex[newName] = ids
+		delete(m.categoryIndex, oldName)
+
+		// 更新缓存中模板的分类和路径
+		for _, id := range ids {
+			if t, ok := m.cache[id]; ok {
+				t.Category = newName
+				t.FilePath = strings.Replace(t.FilePath, oldDir, newDir, 1)
+				m.cache[id] = t
+			}
+		}
+	}
+
+	return nil
+}
 
