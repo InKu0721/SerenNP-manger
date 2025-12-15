@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { 
   Square, 
   Target, 
@@ -11,7 +11,8 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
-  Activity
+  Activity,
+  Search
 } from 'lucide-react'
 import { POCTemplate, ScanStatus } from '../types'
 import toast from 'react-hot-toast'
@@ -20,6 +21,8 @@ interface ScannerProps {
   onViewResult?: (scanId: string) => void;
 }
 
+const MAX_DISPLAY = 100 // 最多显示100个模板
+
 function Scanner({ onViewResult }: ScannerProps) {
   const [targets, setTargets] = useState('')
   const [templates, setTemplates] = useState<POCTemplate[]>([])
@@ -27,14 +30,32 @@ function Scanner({ onViewResult }: ScannerProps) {
   const [activeScans, setActiveScans] = useState<ScanStatus[]>([])
   const [scanning, setScanning] = useState(false)
   const [expandedScans, setExpandedScans] = useState<string[]>([])
+  const [templateSearch, setTemplateSearch] = useState('')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadTemplates()
     loadScans()
-    // 只在打开时加载一次，不再定时刷新
   }, [])
 
+  // 过滤后的模板（使用 useMemo 避免重复计算）
+  const filteredTemplates = useMemo(() => {
+    if (!templateSearch.trim()) {
+      return templates.slice(0, MAX_DISPLAY)
+    }
+    const search = templateSearch.toLowerCase()
+    return templates
+      .filter(t => 
+        t.name?.toLowerCase().includes(search) ||
+        t.id?.toLowerCase().includes(search) ||
+        t.category?.toLowerCase().includes(search) ||
+        t.severity?.toLowerCase().includes(search)
+      )
+      .slice(0, MAX_DISPLAY)
+  }, [templates, templateSearch])
+
   const loadTemplates = async () => {
+    setLoading(true)
     try {
       if (window.go?.main?.App?.GetAllPOCs) {
         const data = await window.go.main.App.GetAllPOCs()
@@ -42,6 +63,8 @@ function Scanner({ onViewResult }: ScannerProps) {
       }
     } catch (error) {
       console.error(error)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -117,11 +140,15 @@ function Scanner({ onViewResult }: ScannerProps) {
     )
   }
 
-  const selectAllTemplates = () => {
-    if (selectedTemplates.length === templates.length) {
-      setSelectedTemplates([])
+  const selectAllFiltered = () => {
+    const filteredIds = filteredTemplates.map(t => t.id)
+    const allSelected = filteredIds.every(id => selectedTemplates.includes(id))
+    if (allSelected) {
+      // 取消选择当前过滤的模板
+      setSelectedTemplates(prev => prev.filter(id => !filteredIds.includes(id)))
     } else {
-      setSelectedTemplates(templates.map(t => t.id))
+      // 选择当前过滤的所有模板
+      setSelectedTemplates(prev => [...new Set([...prev, ...filteredIds])])
     }
   }
 
@@ -227,27 +254,51 @@ function Scanner({ onViewResult }: ScannerProps) {
               <h2 className="text-lg font-semibold text-white">选择模板</h2>
             </div>
             <button
-              onClick={selectAllTemplates}
+              onClick={selectAllFiltered}
               className="text-sm text-cyber-400 hover:text-cyber-300"
             >
-              {selectedTemplates.length === templates.length ? '取消全选' : '全选'}
+              {filteredTemplates.every(t => selectedTemplates.includes(t.id)) ? '取消全选' : '全选当前'}
             </button>
           </div>
-          <div className="h-64 overflow-y-auto space-y-2">
-            {templates.length === 0 ? (
+          
+          {/* 搜索框 */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-dark-500" />
+            <input
+              type="text"
+              placeholder="搜索模板名称、分类、严重程度..."
+              value={templateSearch}
+              onChange={(e) => setTemplateSearch(e.target.value)}
+              className="w-full pl-9 py-2 text-sm"
+            />
+          </div>
+
+          <div className="h-52 overflow-y-auto space-y-1">
+            {loading ? (
+              <div className="text-center py-8 text-dark-500">
+                <Loader className="w-6 h-6 mx-auto mb-2 animate-spin" />
+                <p>加载中...</p>
+              </div>
+            ) : templates.length === 0 ? (
               <div className="text-center py-8 text-dark-500">
                 <FileCode2 className="w-8 h-8 mx-auto mb-2 opacity-50" />
                 <p>暂无模板</p>
+                <p className="text-xs mt-1">请在设置中配置模板目录</p>
+              </div>
+            ) : filteredTemplates.length === 0 ? (
+              <div className="text-center py-8 text-dark-500">
+                <Search className="w-6 h-6 mx-auto mb-2 opacity-50" />
+                <p>未找到匹配的模板</p>
               </div>
             ) : (
-              templates.map(template => (
+              filteredTemplates.map(template => (
                 <label
                   key={template.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer
-                            transition-colors border
+                  className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer
+                            transition-colors border text-sm
                             ${selectedTemplates.includes(template.id)
                               ? 'bg-cyber-500/10 border-cyber-500/30'
-                              : 'bg-dark-800/50 border-dark-700/50 hover:border-dark-600'
+                              : 'bg-dark-800/50 border-transparent hover:border-dark-600'
                             }`}
                 >
                   <input
@@ -258,7 +309,7 @@ function Scanner({ onViewResult }: ScannerProps) {
                              text-cyber-500 focus:ring-cyber-500/50"
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm text-white truncate">
+                    <div className="text-white truncate">
                       {template.name || template.id}
                     </div>
                     <div className="text-xs text-dark-500">
@@ -269,8 +320,12 @@ function Scanner({ onViewResult }: ScannerProps) {
               ))
             )}
           </div>
-          <div className="text-sm text-dark-500">
-            已选择 {selectedTemplates.length} / {templates.length} 个模板
+          <div className="flex items-center justify-between text-sm text-dark-500">
+            <span>已选择 {selectedTemplates.length} 个</span>
+            <span>
+              {templateSearch ? `显示 ${filteredTemplates.length} / ${templates.length}` : `共 ${templates.length} 个`}
+              {templates.length > MAX_DISPLAY && !templateSearch && ` (最多显示 ${MAX_DISPLAY})`}
+            </span>
           </div>
         </div>
       </div>
