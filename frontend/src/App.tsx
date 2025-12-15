@@ -29,6 +29,8 @@ declare global {
       main: {
         App: {
           GetAllPOCs: () => Promise<POCTemplate[]>;
+          GetPOCsPaginated: (page: number, pageSize: number) => Promise<{ templates: POCTemplate[], total: number, page: number, pageSize: number }>;
+          GetPOCCount: () => Promise<number>;
           GetPOCByID: (id: string) => Promise<POCTemplate>;
           CreatePOC: (template: POCTemplate) => Promise<void>;
           UpdatePOC: (template: POCTemplate) => Promise<void>;
