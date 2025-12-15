@@ -396,20 +396,6 @@ function Scanner({ onViewResult }: ScannerProps) {
         </div>
       </div>
 
-      {/* 提示信息 */}
-      <div className="card p-4 bg-yellow-500/10 border-yellow-500/30">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <p className="text-yellow-400 font-medium">测试模式</p>
-            <p className="text-dark-400 mt-1">
-              当前扫描器为模拟模式，用于 UI 测试。真正的 Nuclei 扫描功能需要集成 Nuclei SDK。
-              如需真实扫描，请使用 nuclei 命令行工具配合本地模板目录。
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* 启动按钮 */}
       <div className="flex justify-center">
         <button
