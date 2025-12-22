@@ -18,25 +18,24 @@ import { POCTemplate, ScanStatus } from '../types'
 import toast from 'react-hot-toast'
 
 interface ScannerProps {
+  templates: POCTemplate[];
+  loading: boolean;
   onViewResult?: (scanId: string) => void;
 }
 
 const MAX_DISPLAY = 100 // 最多显示100个模板
 
-function Scanner({ onViewResult }: ScannerProps) {
+function Scanner({ templates, loading, onViewResult }: ScannerProps) {
   const [taskName, setTaskName] = useState('')
   const [targets, setTargets] = useState('')
-  const [templates, setTemplates] = useState<POCTemplate[]>([])
   const [selectedTemplates, setSelectedTemplates] = useState<string[]>([])
   const [activeScans, setActiveScans] = useState<ScanStatus[]>([])
   const [scanning, setScanning] = useState(false)
   const [expandedScans, setExpandedScans] = useState<string[]>([])
   const [templateSearch, setTemplateSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    loadTemplates()
     loadScans()
   }, [])
 
@@ -87,20 +86,6 @@ function Scanner({ onViewResult }: ScannerProps) {
     }
     return filtered.map(t => t.id)
   }, [templates, templateSearch, categoryFilter])
-
-  const loadTemplates = async () => {
-    setLoading(true)
-    try {
-      if (window.go?.main?.App?.GetAllPOCs) {
-        const data = await window.go.main.App.GetAllPOCs()
-        setTemplates(data || [])
-      }
-    } catch (error) {
-      console.error(error)
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const loadScans = async () => {
     try {

@@ -38,7 +38,9 @@ export function GetStats():Promise<models.Stats>;
 
 export function GetTemplatesDir():Promise<string>;
 
-export function ImportPOC(arg1:string):Promise<models.POCTemplate>;
+export function ImportPOC(arg1:string,arg2:string):Promise<models.POCTemplate>;
+
+export function ImportPOCsFromFolder(arg1:string):Promise<Record<string, any>>;
 
 export function LoadSettings():Promise<models.Settings>;
 

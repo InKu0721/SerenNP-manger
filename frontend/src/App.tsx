@@ -43,7 +43,8 @@ declare global {
           DeleteCategory: (categoryName: string) => Promise<void>;
           RenameCategory: (oldName: string, newName: string) => Promise<void>;
           SearchPOCs: (query: string, category: string, severity: string) => Promise<POCTemplate[]>;
-          ImportPOC: (content: string) => Promise<POCTemplate>;
+          ImportPOC: (content: string, category?: string) => Promise<POCTemplate>;
+          ImportPOCsFromFolder: (folderPath: string) => Promise<{ success: number; failed: number; total: number; errors: string[] }>;
           ExportPOC: (id: string) => Promise<string>;
           StartScan: (request: any) => Promise<string>;
           StopScan: (scanId: string) => Promise<void>;
@@ -68,9 +69,12 @@ function App() {
   const [isEditorOpen, setIsEditorOpen] = useState(false)
   const [stats, setStats] = useState<Stats | null>(null)
   const [selectedScanId, setSelectedScanId] = useState<string>('')
+  const [templates, setTemplates] = useState<POCTemplate[]>([])
+  const [templatesLoading, setTemplatesLoading] = useState(true)
 
   useEffect(() => {
     loadStats()
+    loadTemplates()
   }, [])
 
   const loadStats = useCallback(async () => {
@@ -81,6 +85,20 @@ function App() {
       }
     } catch (error) {
       console.error('加载统计数据失败:', error)
+    }
+  }, [])
+
+  const loadTemplates = useCallback(async () => {
+    try {
+      setTemplatesLoading(true)
+      if (window.go?.main?.App?.GetAllPOCs) {
+        const data = await window.go.main.App.GetAllPOCs()
+        setTemplates(data || [])
+      }
+    } catch (error) {
+      console.error('加载模板失败:', error)
+    } finally {
+      setTemplatesLoading(false)
     }
   }, [])
 
@@ -98,7 +116,8 @@ function App() {
     setIsEditorOpen(false)
     setSelectedTemplate(null)
     loadStats()
-  }, [loadStats])
+    loadTemplates() // 刷新模板列表
+  }, [loadStats, loadTemplates])
 
   // 从扫描器跳转到结果页面
   const handleViewScanResult = useCallback((scanId: string) => {
@@ -137,12 +156,21 @@ function App() {
       case 'templates':
         return (
           <TemplateList
+            templates={templates}
+            loading={templatesLoading}
             onEdit={handleEditTemplate}
             onNew={handleNewTemplate}
+            onRefresh={loadTemplates}
           />
         )
       case 'scanner':
-        return <Scanner onViewResult={handleViewScanResult} />
+        return (
+          <Scanner 
+            templates={templates}
+            loading={templatesLoading}
+            onViewResult={handleViewScanResult}
+          />
+        )
       case 'results':
         return (
           <Results 

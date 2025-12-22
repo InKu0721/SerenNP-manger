@@ -74,8 +74,12 @@ export function GetTemplatesDir() {
   return window['go']['main']['App']['GetTemplatesDir']();
 }
 
-export function ImportPOC(arg1) {
-  return window['go']['main']['App']['ImportPOC'](arg1);
+export function ImportPOC(arg1, arg2) {
+  return window['go']['main']['App']['ImportPOC'](arg1, arg2);
+}
+
+export function ImportPOCsFromFolder(arg1) {
+  return window['go']['main']['App']['ImportPOCsFromFolder'](arg1);
 }
 
 export function LoadSettings() {

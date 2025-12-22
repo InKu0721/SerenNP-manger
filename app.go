@@ -194,12 +194,35 @@ func (a *App) SearchPOCs(query string, category string, severity string) ([]mode
 	return results, nil
 }
 
-// ImportPOC 导入POC文件
-func (a *App) ImportPOC(content string) (*models.POCTemplate, error) {
+// ImportPOC 导入POC文件（带命名去重处理）
+func (a *App) ImportPOC(content string, category string) (*models.POCTemplate, error) {
 	template, err := a.pocManager.ParseYAML(content)
 	if err != nil {
 		return nil, fmt.Errorf("解析YAML失败: %v", err)
 	}
+	
+	// 如果指定了分类，使用指定的分类；否则使用模板中的分类（如果有）
+	if category != "" {
+		template.Category = category
+	} else if template.Category == "" {
+		// 如果模板中也没有分类，使用默认分类
+		template.Category = "custom"
+	}
+	
+	// 检查同一分类下是否有同名POC，如果有则自动重命名
+	if template.Name != "" {
+		uniqueName := a.pocManager.GenerateUniqueName(template.Category, template.Name)
+		if uniqueName != template.Name {
+			// 更新YAML内容中的名称
+			template.Name = uniqueName
+			// 重新生成YAML内容
+			yamlContent, err := a.pocManager.ToYAML(*template)
+			if err == nil {
+				template.Content = yamlContent
+			}
+		}
+	}
+	
 	template.ID = generateID()
 	template.CreatedAt = time.Now()
 	template.UpdatedAt = time.Now()
@@ -208,6 +231,123 @@ func (a *App) ImportPOC(content string) (*models.POCTemplate, error) {
 		return nil, err
 	}
 	return template, nil
+}
+
+// ImportPOCsFromFolder 批量导入文件夹中的POC（按文件夹名称分类）
+func (a *App) ImportPOCsFromFolder(folderPath string) (map[string]interface{}, error) {
+	// 检查文件夹是否存在
+	info, err := os.Stat(folderPath)
+	if err != nil {
+		return nil, fmt.Errorf("文件夹不存在: %v", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("路径不是文件夹: %s", folderPath)
+	}
+
+	var successCount, failCount int
+	var errors []string
+
+	// 获取基础路径，用于计算相对路径
+	basePath := folderPath
+
+	// 遍历文件夹中的所有YAML文件
+	err = filepath.Walk(folderPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if !strings.HasSuffix(strings.ToLower(path), ".yaml") && !strings.HasSuffix(strings.ToLower(path), ".yml") {
+			return nil
+		}
+
+		// 计算相对于基础路径的分类路径
+		relPath, err := filepath.Rel(basePath, path)
+		if err != nil {
+			failCount++
+			errors = append(errors, fmt.Sprintf("%s: 路径计算失败 - %v", filepath.Base(path), err))
+			return nil
+		}
+
+		// 从文件路径提取分类（目录结构）
+		dirPath := filepath.Dir(relPath)
+		var categoryName string
+		if dirPath == "." || dirPath == "" {
+			// 文件在根目录，使用文件夹名称作为分类
+			categoryName = filepath.Base(folderPath)
+		} else {
+			// 使用目录结构作为多级分类
+			parts := strings.Split(dirPath, string(os.PathSeparator))
+			// 清理每一级名称
+			cleanedParts := make([]string, 0, len(parts))
+			invalidChars := `\:*?"<>|`
+			for _, part := range parts {
+				part = strings.TrimSpace(part)
+				if part == "" || part == "." {
+					continue
+				}
+				// 清理特殊字符（保留 "/" 作为分隔符）
+				for _, char := range invalidChars {
+					part = strings.ReplaceAll(part, string(char), "_")
+				}
+				if part != "" {
+					cleanedParts = append(cleanedParts, part)
+				}
+			}
+			if len(cleanedParts) > 0 {
+				categoryName = strings.Join(cleanedParts, "/")
+			} else {
+				categoryName = filepath.Base(folderPath)
+			}
+		}
+
+		// 清理分类名称
+		categoryName = strings.TrimSpace(categoryName)
+		if categoryName == "" {
+			categoryName = "imported"
+		}
+
+		// 确保分类目录存在
+		if err := a.pocManager.CreateCategory(categoryName); err != nil {
+			// 如果分类已存在，忽略错误
+			if !strings.Contains(err.Error(), "已存在") {
+				failCount++
+				errors = append(errors, fmt.Sprintf("%s: 创建分类失败 - %v", filepath.Base(path), err))
+				return nil
+			}
+		}
+
+		// 读取文件内容
+		content, err := os.ReadFile(path)
+		if err != nil {
+			failCount++
+			errors = append(errors, fmt.Sprintf("%s: 读取失败 - %v", filepath.Base(path), err))
+			return nil
+		}
+
+		// 导入POC（使用提取的分类路径）
+		_, err = a.ImportPOC(string(content), categoryName)
+		if err != nil {
+			failCount++
+			errors = append(errors, fmt.Sprintf("%s: %v", filepath.Base(path), err))
+		} else {
+			successCount++
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("遍历文件夹失败: %v", err)
+	}
+
+	return map[string]interface{}{
+		"success": successCount,
+		"failed":  failCount,
+		"total":   successCount + failCount,
+		"errors":  errors,
+	}, nil
 }
 
 // ExportPOC 导出POC为YAML

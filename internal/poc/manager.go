@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"nuclei-poc-manager/internal/models"
 
@@ -149,11 +150,17 @@ func (m *Manager) loadFileMetadata(path string, info os.FileInfo) (*models.POCTe
 	// 不存储完整内容，需要时再读取
 	template.Content = ""
 
-	// 从路径提取分类
+	// 从路径提取分类（支持多级分类，最多三级）
 	relPath, _ := filepath.Rel(m.templatesDir, path)
 	parts := strings.Split(relPath, string(os.PathSeparator))
 	if len(parts) > 1 {
-		template.Category = parts[0]
+		// 最多取前三级作为分类路径
+		maxLevels := 3
+		if len(parts)-1 < maxLevels {
+			maxLevels = len(parts) - 1
+		}
+		categoryParts := parts[:maxLevels]
+		template.Category = strings.Join(categoryParts, "/")
 	}
 
 	// 使用传入的文件信息
@@ -180,11 +187,17 @@ func (m *Manager) loadFile(path string) (*models.POCTemplate, error) {
 	template.FilePath = path
 	template.Content = string(content)
 
-	// 从路径提取分类
+	// 从路径提取分类（支持多级分类，最多三级）
 	relPath, _ := filepath.Rel(m.templatesDir, path)
 	parts := strings.Split(relPath, string(os.PathSeparator))
 	if len(parts) > 1 {
-		template.Category = parts[0]
+		// 最多取前三级作为分类路径
+		maxLevels := 3
+		if len(parts)-1 < maxLevels {
+			maxLevels = len(parts) - 1
+		}
+		categoryParts := parts[:maxLevels]
+		template.Category = strings.Join(categoryParts, "/")
 	}
 
 	// 获取文件修改时间
@@ -337,7 +350,7 @@ func (m *Manager) Save(template models.POCTemplate) error {
 	// 获取旧模板（用于更新索引）
 	oldTemplate, existed := m.cache[template.ID]
 
-	// 确定保存路径
+	// 确定保存路径（支持多级分类）
 	var filePath string
 	if template.FilePath != "" {
 		filePath = template.FilePath
@@ -346,6 +359,7 @@ func (m *Manager) Save(template models.POCTemplate) error {
 		if categoryDir == "" {
 			categoryDir = "custom"
 		}
+		// 将分类路径转换为目录路径（支持多级）
 		dir := filepath.Join(m.templatesDir, categoryDir)
 		os.MkdirAll(dir, 0755)
 		filePath = filepath.Join(dir, template.ID+".yaml")
@@ -512,17 +526,38 @@ func (m *Manager) GetCategoriesWithCount() map[string]int {
 	return result
 }
 
-// CreateCategory 创建新分类（创建目录）
+// CreateCategory 创建新分类（支持多级分类，使用 "/" 分隔）
 func (m *Manager) CreateCategory(categoryName string) error {
 	if categoryName == "" {
 		return fmt.Errorf("分类名称不能为空")
 	}
 
-	// 检查分类名是否合法（不能包含特殊字符）
-	if strings.ContainsAny(categoryName, `/\:*?"<>|`) {
-		return fmt.Errorf("分类名称不能包含特殊字符")
+	// 检查分类名是否合法（允许 "/" 作为分隔符，但不能包含其他特殊字符）
+	invalidChars := `\:*?"<>|`
+	for _, char := range invalidChars {
+		if strings.ContainsRune(categoryName, char) {
+			return fmt.Errorf("分类名称不能包含特殊字符: %c", char)
+		}
 	}
 
+	// 检查分类层级（最多三级）
+	parts := strings.Split(categoryName, "/")
+	if len(parts) > 3 {
+		return fmt.Errorf("分类最多支持三级，当前: %d 级", len(parts))
+	}
+
+	// 检查每一级名称是否合法
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return fmt.Errorf("分类名称第 %d 级不能为空", i+1)
+		}
+		if strings.ContainsAny(part, invalidChars) {
+			return fmt.Errorf("分类名称第 %d 级包含非法字符", i+1)
+		}
+	}
+
+	// 将分类路径转换为目录路径
 	categoryDir := filepath.Join(m.templatesDir, categoryName)
 	
 	// 检查目录是否已存在
@@ -530,7 +565,7 @@ func (m *Manager) CreateCategory(categoryName string) error {
 		return fmt.Errorf("分类已存在: %s", categoryName)
 	}
 
-	// 创建目录
+	// 创建多级目录
 	if err := os.MkdirAll(categoryDir, 0755); err != nil {
 		return fmt.Errorf("创建分类目录失败: %v", err)
 	}
@@ -572,7 +607,51 @@ func (m *Manager) DeleteCategory(categoryName string) error {
 	return nil
 }
 
-// RenameCategory 重命名分类
+// CheckDuplicateName 检查同一分类下是否存在同名POC
+func (m *Manager) CheckDuplicateName(category, name string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	cat := category
+	if cat == "" {
+		cat = "未分类"
+	}
+
+	ids, ok := m.categoryIndex[cat]
+	if !ok {
+		return false
+	}
+
+	for _, id := range ids {
+		if t, ok := m.cache[id]; ok {
+			if t.Name == name {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// GenerateUniqueName 生成唯一名称（如果已存在则添加数字后缀）
+func (m *Manager) GenerateUniqueName(category, name string) string {
+	if !m.CheckDuplicateName(category, name) {
+		return name
+	}
+
+	baseName := name
+	for i := 1; i < 1000; i++ {
+		newName := fmt.Sprintf("%s_%d", baseName, i)
+		if !m.CheckDuplicateName(category, newName) {
+			return newName
+		}
+	}
+
+	// 如果1000个都重复了，使用时间戳
+	return fmt.Sprintf("%s_%d", baseName, time.Now().Unix())
+}
+
+// RenameCategory 重命名分类（支持多级分类）
 func (m *Manager) RenameCategory(oldName, newName string) error {
 	if oldName == "" || newName == "" {
 		return fmt.Errorf("分类名称不能为空")
@@ -580,8 +659,30 @@ func (m *Manager) RenameCategory(oldName, newName string) error {
 	if oldName == "未分类" {
 		return fmt.Errorf("无法重命名此分类")
 	}
-	if strings.ContainsAny(newName, `/\:*?"<>|`) {
-		return fmt.Errorf("分类名称不能包含特殊字符")
+
+	// 检查新分类名是否合法（允许 "/" 作为分隔符）
+	invalidChars := `\:*?"<>|`
+	for _, char := range invalidChars {
+		if strings.ContainsRune(newName, char) {
+			return fmt.Errorf("分类名称不能包含特殊字符: %c", char)
+		}
+	}
+
+	// 检查分类层级（最多三级）
+	parts := strings.Split(newName, "/")
+	if len(parts) > 3 {
+		return fmt.Errorf("分类最多支持三级，当前: %d 级", len(parts))
+	}
+
+	// 检查每一级名称是否合法
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return fmt.Errorf("分类名称第 %d 级不能为空", i+1)
+		}
+		if strings.ContainsAny(part, invalidChars) {
+			return fmt.Errorf("分类名称第 %d 级包含非法字符", i+1)
+		}
 	}
 
 	m.mu.Lock()
@@ -614,6 +715,7 @@ func (m *Manager) RenameCategory(oldName, newName string) error {
 		for _, id := range ids {
 			if t, ok := m.cache[id]; ok {
 				t.Category = newName
+				// 更新文件路径
 				t.FilePath = strings.Replace(t.FilePath, oldDir, newDir, 1)
 				m.cache[id] = t
 			}
