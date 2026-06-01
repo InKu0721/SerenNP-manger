@@ -14,6 +14,7 @@ export interface POCTemplate {
 }
 
 export interface ScanRequest {
+  name?: string;
   targets: string[];
   templateIds: string[];
   options: ScanOptions;
@@ -29,6 +30,7 @@ export interface ScanOptions {
 
 export interface ScanStatus {
   id: string;
+  name?: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'stopped';
   progress: number;
   total: number;
