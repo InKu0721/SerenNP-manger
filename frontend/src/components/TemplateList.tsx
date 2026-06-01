@@ -43,6 +43,29 @@ function TemplateList({ templates: allTemplates, loading, onEdit, onNew, onRefre
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set())
   const [renamingCategory, setRenamingCategory] = useState<string | null>(null)
   const [renameCategoryValue, setRenameCategoryValue] = useState('')
+  const [categoriesWithCount, setCategoriesWithCount] = useState<Record<string, number>>({})
+
+  // 加载分类列表（含空分类）
+  const loadCategories = async () => {
+    try {
+      if (window.go?.main?.App?.GetCategoriesWithCount) {
+        const data = await window.go.main.App.GetCategoriesWithCount()
+        setCategoriesWithCount(data || {})
+      }
+    } catch {
+      // 静默失败
+    }
+  }
+
+  // 挂载时加载分类
+  useEffect(() => {
+    loadCategories()
+  }, [])
+
+  // 当模板列表刷新时同步刷新分类
+  useEffect(() => {
+    loadCategories()
+  }, [allTemplates])
 
   // 过滤后的模板
   const filteredTemplates = useMemo(() => {
@@ -97,8 +120,8 @@ function TemplateList({ templates: allTemplates, loading, onEdit, onNew, onRefre
   const categoryTree = useMemo(() => {
     const root = new Map<string, CategoryNode>()
 
+    // 1. 先插入所有有模板的分类
     Object.entries(templatesByCategory).forEach(([category, templates]) => {
-      // 处理"未分类"特殊 case
       if (category === '未分类') {
         root.set('未分类', {
           name: '未分类',
@@ -115,32 +138,45 @@ function TemplateList({ templates: allTemplates, loading, onEdit, onNew, onRefre
 
       parts.forEach((part, index) => {
         const fullPath = parts.slice(0, index + 1).join('/')
-
         if (!current.has(part)) {
-          current.set(part, {
-            name: part,
-            fullPath,
-            count: 0,
-            children: new Map(),
-            level: index
-          })
+          current.set(part, { name: part, fullPath, count: 0, children: new Map(), level: index })
         }
-
         const node = current.get(part)!
         if (index === parts.length - 1) {
-          // 叶子节点：累加该分类下的模板数量
           node.count += templates.length
         }
-
         current = node.children
       })
     })
 
-    // 自底向上汇总：父节点 = 自身 + 所有子节点
+    // 2. 合并后台返回的空分类（确保空分类也显示）
+    Object.entries(categoriesWithCount).forEach(([category, count]) => {
+      if (category === '未分类' || category === '') return
+      // 跳过已经在步骤1中处理的分类（模板数 > 0）
+      if (templatesByCategory[category] && templatesByCategory[category].length > 0) return
+
+      const parts = category.split('/')
+      let current = root
+
+      parts.forEach((part, index) => {
+        const fullPath = parts.slice(0, index + 1).join('/')
+        if (!current.has(part)) {
+          current.set(part, { name: part, fullPath, count: 0, children: new Map(), level: index })
+        }
+        const node = current.get(part)!
+        // 空分类：确保叶子节点存在
+        if (index === parts.length - 1 && node.count === 0) {
+          node.count = count
+        }
+        current = node.children
+      })
+    })
+
+    // 3. 自底向上汇总
     root.forEach(node => propagateCounts(node))
 
     return root
-  }, [templatesByCategory])
+  }, [templatesByCategory, categoriesWithCount])
 
   // 展开/折叠分类
   const toggleCategory = useCallback((fullPath: string) => {
