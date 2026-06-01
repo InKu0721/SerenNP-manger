@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"encoding/json"
 	"io"
 	"math/rand"
 	"net"
@@ -66,9 +67,10 @@ func init() {
 
 // Scanner 扫描器
 type Scanner struct {
-	scans   map[string]*ScanJob
-	results map[string][]models.ScanResult
-	mu      sync.RWMutex
+	scans    map[string]*ScanJob
+	results  map[string][]models.ScanResult
+	scansDir string // 扫描结果持久化目录
+	mu       sync.RWMutex
 }
 
 // ScanJob 扫描任务
@@ -82,12 +84,90 @@ type ScanJob struct {
 	Options      models.ScanOptions
 }
 
+// savedScan 持久化的扫描数据
+type savedScan struct {
+	Status  models.ScanStatus   `json:"status"`
+	Results []models.ScanResult `json:"results"`
+}
+
 // NewScanner 创建新的扫描器
-func NewScanner() *Scanner {
-	return &Scanner{
-		scans:   make(map[string]*ScanJob),
-		results: make(map[string][]models.ScanResult),
+func NewScanner(scansDir string) *Scanner {
+	s := &Scanner{
+		scans:    make(map[string]*ScanJob),
+		results:  make(map[string][]models.ScanResult),
+		scansDir: scansDir,
 	}
+	// 从磁盘加载历史扫描
+	s.loadScansFromDisk()
+	return s
+}
+
+// loadScansFromDisk 从磁盘加载历史扫描任务
+func (s *Scanner) loadScansFromDisk() {
+	if s.scansDir == "" {
+		return
+	}
+	os.MkdirAll(s.scansDir, 0755)
+
+	entries, err := os.ReadDir(s.scansDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		scanID := strings.TrimSuffix(entry.Name(), ".json")
+		filePath := filepath.Join(s.scansDir, entry.Name())
+
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+
+		var saved savedScan
+		if err := json.Unmarshal(data, &saved); err != nil {
+			continue
+		}
+
+		// 恢复结果
+		s.results[scanID] = saved.Results
+
+		// 恢复状态（无 Cancel 函数，标记为历史任务）
+		s.scans[scanID] = &ScanJob{
+			ID:           scanID,
+			Status:       &saved.Status,
+			Cancel:       nil,
+			TemplatesDir: s.scansDir,
+		}
+	}
+}
+
+// saveScanToDisk 将扫描结果保存到磁盘
+func (s *Scanner) saveScanToDisk(scanID string) {
+	if s.scansDir == "" {
+		return
+	}
+	os.MkdirAll(s.scansDir, 0755)
+
+	job, ok := s.scans[scanID]
+	if !ok {
+		return
+	}
+	results := s.results[scanID]
+
+	saved := savedScan{
+		Status:  *job.Status,
+		Results: results,
+	}
+
+	data, err := json.MarshalIndent(saved, "", "  ")
+	if err != nil {
+		return
+	}
+
+	filePath := filepath.Join(s.scansDir, scanID+".json")
+	os.WriteFile(filePath, data, 0644)
 }
 
 // Start 开始扫描
@@ -146,8 +226,11 @@ func (s *Scanner) runRealScan(ctx context.Context, job *ScanJob) {
 			s.mu.Lock()
 			job.Status.Status = "failed"
 			job.Status.Error = fmt.Sprintf("扫描崩溃: %v", r)
+			job.Status.Progress = 100
 			job.Status.CompletedAt = time.Now()
 			s.mu.Unlock()
+			// 崩溃也保存已收集的结果
+			s.saveScanToDisk(job.ID)
 		}
 	}()
 
@@ -193,9 +276,12 @@ func (s *Scanner) runRealScan(ctx context.Context, job *ScanJob) {
 		},
 	}
 
-	// 速率限制器
-	rateLimiter := time.NewTicker(time.Second / time.Duration(rateLimit))
-	defer rateLimiter.Stop()
+	// 速率限制器（> 500 req/s 则跳过限制，避免过高 CPU 开销）
+	var rateLimiter *time.Ticker
+	if rateLimit > 0 && rateLimit <= 500 {
+		rateLimiter = time.NewTicker(time.Second / time.Duration(rateLimit))
+		defer rateLimiter.Stop()
+	}
 
 	// 构建所有扫描任务
 	type scanTask struct {
@@ -234,8 +320,10 @@ func (s *Scanner) runRealScan(ctx context.Context, job *ScanJob) {
 					if !ok {
 						return
 					}
-					// 速率限制
-					<-rateLimiter.C
+					// 速率限制（nil 表示无限制）
+					if rateLimiter != nil {
+						<-rateLimiter.C
+					}
 
 					// 允许私有地址检查
 					if !job.Options.AllowPrivate {
@@ -297,25 +385,17 @@ func (s *Scanner) runRealScan(ctx context.Context, job *ScanJob) {
 		close(resultCh)
 	}()
 
-	// 收集结果
+	// 收集结果（仅保存成功匹配 + 错误，非匹配跳过以节省空间）
 	for result := range resultCh {
 		completed++
-		if result != nil {
-			// 区分成功发现和失败记录
-			if result.Error != "" {
-				// 有错误：记录但不计入发现数
-				result.ScanID = job.ID
-				s.mu.Lock()
-				s.results[job.ID] = append(s.results[job.ID], *result)
-				s.mu.Unlock()
-			} else if result.Matched != "" {
-				// 成功匹配到漏洞
-				result.ScanID = job.ID
-				s.mu.Lock()
-				s.results[job.ID] = append(s.results[job.ID], *result)
+		if result != nil && (result.Matched != "" || result.Error != "") {
+			result.ScanID = job.ID
+			s.mu.Lock()
+			s.results[job.ID] = append(s.results[job.ID], *result)
+			if result.Matched != "" {
 				job.Status.Found++
-				s.mu.Unlock()
 			}
+			s.mu.Unlock()
 		}
 
 		s.mu.Lock()
@@ -335,6 +415,9 @@ func (s *Scanner) runRealScan(ctx context.Context, job *ScanJob) {
 	job.Status.Progress = 100
 	job.Status.CompletedAt = time.Now()
 	s.mu.Unlock()
+
+	// 自动保存到磁盘
+	s.saveScanToDisk(job.ID)
 }
 
 // executeTemplate 执行单个模板扫描（支持 extractors、变量展开、错误记录）
@@ -522,6 +605,7 @@ func (s *Scanner) sendRequest(ctx context.Context, client *http.Client, target s
 		}
 	}
 
+	// 未匹配，跳过（仅保存匹配成功的请求/响应包）
 	return nil
 }
 
@@ -923,9 +1007,11 @@ func parseHTTPRequestsLegacy(content string) []HTTPRequest {
 			pathStr := strings.TrimPrefix(trimmed, "path:")
 			pathStr = strings.Trim(pathStr, " []\"'")
 			currentReq.Path = pathStr
-		} else if strings.HasPrefix(trimmed, "- \"{{BaseURL}}") || strings.HasPrefix(trimmed, "- '{{BaseURL}}") {
+		} else if strings.HasPrefix(trimmed, "- \"") || strings.HasPrefix(trimmed, "- '") {
 			path := strings.Trim(trimmed, "- \"'")
 			path = strings.TrimPrefix(path, "{{BaseURL}}")
+			// 如果是其他变量前缀（如 {{RootURL}}），也去掉
+			path = strings.TrimPrefix(path, "{{RootURL}}")
 			currentReq.Path = path
 		} else if strings.HasPrefix(trimmed, "body:") {
 			currentReq.Body = strings.Trim(strings.TrimPrefix(trimmed, "body:"), " \"'")
@@ -1277,4 +1363,68 @@ func GetTemplateFilePath(templatesDir, templateID string) string {
 		return nil
 	})
 	return result
+}
+// DeleteScan 删除扫描任务及其结果
+func (s *Scanner) DeleteScan(scanID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	job, ok := s.scans[scanID]
+	if !ok {
+		return fmt.Errorf("扫描任务不存在: %s", scanID)
+	}
+
+	// 如果正在运行，先停止
+	if job.Cancel != nil && job.Status.Status == "running" {
+		job.Cancel()
+	}
+
+	delete(s.scans, scanID)
+	delete(s.results, scanID)
+
+	// 删除磁盘文件
+	if s.scansDir != "" {
+		filePath := filepath.Join(s.scansDir, scanID+".json")
+		os.Remove(filePath)
+	}
+	return nil
+}
+
+// ExportScanResults 导出扫描结果为 JSON
+func (s *Scanner) ExportScanResults(scanID string) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	results, ok := s.results[scanID]
+	if !ok {
+		return "", fmt.Errorf("扫描任务不存在: %s", scanID)
+	}
+
+	type ExportResult struct {
+		TemplateName string `json:"templateName"`
+		Severity     string `json:"severity"`
+		Host         string `json:"host"`
+		Matched      string `json:"matched"`
+		Request      string `json:"request,omitempty"`
+		Response     string `json:"response,omitempty"`
+	}
+	exports := make([]ExportResult, 0, len(results))
+	for _, r := range results {
+		if r.Matched != "" {
+			exports = append(exports, ExportResult{
+				TemplateName: r.TemplateName,
+				Severity:     r.Severity,
+				Host:         r.Host,
+				Matched:      r.Matched,
+				Request:      r.Request,
+				Response:     r.Response,
+			})
+		}
+	}
+
+	data, err := json.MarshalIndent(exports, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }

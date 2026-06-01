@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
-import { 
-  Square, 
-  Target, 
+import {
+  Square,
+  Target,
   FileCode2,
   Loader,
   CheckCircle,
@@ -12,7 +12,9 @@ import {
   ChevronDown,
   ChevronRight,
   Activity,
-  Search
+  Search,
+  Trash2,
+  Download
 } from 'lucide-react'
 import { POCTemplate, ScanStatus } from '../types'
 import toast from 'react-hot-toast'
@@ -183,6 +185,37 @@ function Scanner({ templates, loading, onViewResult }: ScannerProps) {
       }
     } catch (error) {
       toast.error('停止扫描失败')
+    }
+  }
+
+  const handleDeleteScan = async (scanId: string) => {
+    if (!confirm('确定要删除这个扫描任务吗？')) return
+    try {
+      if (window.go?.main?.App?.DeleteScan) {
+        await window.go.main.App.DeleteScan(scanId)
+        toast.success('扫描已删除')
+        loadScans()
+      }
+    } catch (error: any) {
+      toast.error('删除失败: ' + (error?.message || '未知错误'))
+    }
+  }
+
+  const handleExportScan = async (scanId: string) => {
+    try {
+      if (window.go?.main?.App?.ExportScanResults) {
+        const json = await window.go.main.App.ExportScanResults(scanId)
+        const blob = new Blob([json], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${scanId}_results.json`
+        a.click()
+        URL.revokeObjectURL(url)
+        toast.success('导出成功')
+      }
+    } catch (error: any) {
+      toast.error('导出失败: ' + (error?.message || '未知错误'))
     }
   }
 
@@ -534,6 +567,28 @@ function Scanner({ templates, loading, onViewResult }: ScannerProps) {
                     className="btn btn-primary btn-sm"
                   >
                     查看结果
+                  </button>
+                )}
+
+                {/* 导出按钮 */}
+                {scan.status === 'completed' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleExportScan(scan.id); }}
+                    className="btn btn-secondary btn-sm"
+                    title="导出 JSON"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                )}
+
+                {/* 删除按钮（非运行中） */}
+                {scan.status !== 'running' && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDeleteScan(scan.id); }}
+                    className="btn btn-secondary btn-sm"
+                    title="删除扫描"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
                 )}
               </div>

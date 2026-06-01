@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -52,8 +53,12 @@ func (a *App) startup(ctx context.Context) {
 	os.MkdirAll(dataDir, 0755)
 	os.MkdirAll(templatesDir, 0755)
 
+	// 扫描结果持久化目录
+	scansDir := filepath.Join(dataDir, "scans")
+	os.MkdirAll(scansDir, 0755)
+
 	a.pocManager = poc.NewManager(templatesDir)
-	a.scanner = scanner.NewScanner()
+	a.scanner = scanner.NewScanner(scansDir)
 }
 
 // ReloadTemplates 重新加载模板（当设置改变时调用）
@@ -366,13 +371,12 @@ func (a *App) ExportPOC(id string) (string, error) {
 
 // StartScan 开始扫描
 func (a *App) StartScan(request models.ScanRequest) (string, error) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
 	var templates []models.POCTemplate
+	var skipped []string
 	for _, id := range request.TemplateIDs {
 		t, err := a.pocManager.GetByID(id)
 		if err != nil {
+			skipped = append(skipped, id)
 			continue
 		}
 		templates = append(templates, *t)
@@ -408,6 +412,16 @@ func (a *App) GetScanResults(scanID string) ([]models.ScanResult, error) {
 // GetAllScans 获取所有扫描任务
 func (a *App) GetAllScans() ([]models.ScanStatus, error) {
 	return a.scanner.GetAllScans()
+}
+
+// DeleteScan 删除扫描任务
+func (a *App) DeleteScan(scanID string) error {
+	return a.scanner.DeleteScan(scanID)
+}
+
+// ExportScanResults 导出扫描结果
+func (a *App) ExportScanResults(scanID string) (string, error) {
+	return a.scanner.ExportScanResults(scanID)
 }
 
 // ValidatePOCYAML 验证POC YAML格式
@@ -457,23 +471,22 @@ func (a *App) GetStats() (*models.Stats, error) {
 		stats.RecentScans = scans
 	}
 
-	// 统计所有扫描的发现数
+	// 统计所有扫描的发现数（直接用 ScanStatus.Found 避免逐个 GetResults）
 	for _, scan := range scans {
-		results, _ := a.scanner.GetResults(scan.ID)
-		stats.TotalFindings += len(results)
+		stats.TotalFindings += scan.Found
 	}
 
 	return stats, nil
 }
 
 func generateID() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+	return fmt.Sprintf("%d_%04d", time.Now().UnixNano(), rand.Intn(10000))
 }
 
 // replaceYAMLName 在 YAML 内容中替换 info.name 字段（保留其他所有内容）
 func replaceYAMLName(content string, newName string) string {
-	// 匹配 YAML 中 info 块下的 name 字段
-	re := regexp.MustCompile(`(?m)^(\s*name:\s*).*$`)
+	// 匹配 YAML 中 info 块下的 name 字段（缩进 ≤ 4 空格，避免误改嵌套结构中的 name）
+	re := regexp.MustCompile(`(?m)^([ \t]{1,4}name:\s*).*$`)
 	return re.ReplaceAllString(content, "${1}"+newName)
 }
 

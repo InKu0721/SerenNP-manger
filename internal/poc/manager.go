@@ -278,8 +278,17 @@ func (m *Manager) ToYAML(template models.POCTemplate) (string, error) {
 	return string(output), nil
 }
 
+// waitLoaded 等待异步加载完成（最多等待 5 秒）
+func (m *Manager) waitLoaded() {
+	deadline := time.Now().Add(5 * time.Second)
+	for !m.IsLoaded() && time.Now().Before(deadline) {
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // GetAll 获取所有模板（只返回元数据，不包含完整内容）
 func (m *Manager) GetAll() ([]models.POCTemplate, error) {
+	m.waitLoaded()
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -293,6 +302,7 @@ func (m *Manager) GetAll() ([]models.POCTemplate, error) {
 
 // GetAllPaginated 分页获取模板（按 ID 排序保证结果稳定）
 func (m *Manager) GetAllPaginated(page, pageSize int) ([]models.POCTemplate, int, error) {
+	m.waitLoaded()
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -330,6 +340,7 @@ func (m *Manager) GetAllPaginated(page, pageSize int) ([]models.POCTemplate, int
 
 // GetByID 根据ID获取模板（包含完整内容）
 func (m *Manager) GetByID(id string) (*models.POCTemplate, error) {
+	m.waitLoaded()
 	m.mu.RLock()
 	template, ok := m.cache[id]
 	m.mu.RUnlock()
@@ -730,10 +741,9 @@ func (m *Manager) RenameCategory(oldName, newName string) error {
 		for _, id := range ids {
 			if t, ok := m.cache[id]; ok {
 				t.Category = newName
-				// 更新文件路径
-	// 使用 filepath 重建路径（更安全）
-	relPath, _ := filepath.Rel(oldDir, t.FilePath)
-	t.FilePath = filepath.Join(newDir, relPath)
+							// 更新文件路径（使用 filepath 重建，更安全）
+				relPath, _ := filepath.Rel(oldDir, t.FilePath)
+				t.FilePath = filepath.Join(newDir, relPath)
 				m.cache[id] = t
 			}
 		}

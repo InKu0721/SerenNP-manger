@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { 
-  ClipboardList, 
-  AlertTriangle, 
+import {
+  ClipboardList,
+  AlertTriangle,
   ExternalLink,
   ChevronDown,
   ChevronRight,
@@ -15,6 +15,7 @@ import {
   X
 } from 'lucide-react'
 import { ScanResult, ScanStatus, POCTemplate } from '../types'
+import { BrowserOpenURL } from '../../wailsjs/runtime/runtime'
 import toast from 'react-hot-toast'
 
 interface ResultsProps {
@@ -29,6 +30,7 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
   const [loading, setLoading] = useState(false)
   const [expandedResult, setExpandedResult] = useState<string | null>(null)
   const [filterSeverity, setFilterSeverity] = useState('')
+  const [filterType, setFilterType] = useState<'all' | 'found' | 'error'>('found')
   const [viewingPacket, setViewingPacket] = useState<ScanResult | null>(null)
   const [packetTab, setPacketTab] = useState<'request' | 'response'>('request')
 
@@ -116,11 +118,29 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
     return classes[severity?.toLowerCase()] || 'bg-cyan-500/10 border-cyan-500/30'
   }
 
-  const filteredResults = filterSeverity
-    ? results.filter(r => r.severity?.toLowerCase() === filterSeverity)
-    : results
+  // 从响应中提取状态码
+  const extractStatus = (response?: string) => {
+    if (!response) return ''
+    const m = response.match(/HTTP\/[\d.]+ (\d+)/)
+    return m ? m[1] : ''
+  }
 
-  const severityCounts = results.reduce((acc, r) => {
+  // 过滤：类型 + 严重程度
+  const filteredResults = results.filter(r => {
+    // 按类型过滤
+    if (filterType === 'found' && !r.matched) return false
+    if (filterType === 'error' && !r.error) return false
+    // 按严重程度过滤
+    if (filterSeverity && r.severity?.toLowerCase() !== filterSeverity) return false
+    return true
+  })
+
+  // 统计：漏洞发现 vs 全部
+  const foundCount = results.filter(r => !!r.matched).length
+  const errorCount = results.filter(r => !!r.error).length
+  const totalCount = results.length
+
+  const severityCounts = results.filter(r => !!r.matched).reduce((acc, r) => {
     const sev = r.severity?.toLowerCase() || 'info'
     acc[sev] = (acc[sev] || 0) + 1
     return acc
@@ -256,7 +276,7 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
       </div>
 
       {/* 扫描选择和过滤 */}
-      <div className="card p-4">
+      <div className="card p-4 space-y-3">
         <div className="flex items-center gap-4">
           <div className="flex-1">
             <label className="block text-sm text-dark-400 mb-1">选择扫描任务</label>
@@ -268,7 +288,7 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
               <option value="">选择扫描任务...</option>
               {scans.map(scan => (
                 <option key={scan.id} value={scan.id}>
-                  {scan.id} - {scan.status} ({scan.found} 发现)
+                  {scan.id} - {scan.status} ({scan.found} 发现 / {scan.completed} 请求)
                 </option>
               ))}
             </select>
@@ -288,6 +308,22 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
               <option value="info">Info ({severityCounts.info || 0})</option>
             </select>
           </div>
+        </div>
+        {/* 结果类型过滤 */}
+        <div className="flex gap-2 pt-2 border-t border-dark-700/50">
+          {[
+            { key: 'found', label: '漏洞发现', count: foundCount, color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+            { key: 'error', label: '请求失败', count: errorCount, color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+          ].map(t => (
+            <button
+              key={t.key}
+              onClick={() => setFilterType(t.key as any)}
+              className={`px-4 py-1.5 rounded-lg text-sm border transition-all
+                ${filterType === t.key ? t.color : 'text-dark-500 border-dark-700 hover:border-dark-500'}`}
+            >
+              {t.label} ({t.count})
+            </button>
+          ))}
         </div>
       </div>
 
@@ -367,26 +403,42 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
                       <span className="text-white font-medium">
                         {result.templateName || result.templateId}
                       </span>
-                      <span className={`tag ${getSeverityClass(result.severity)}`}>
-                        {result.severity}
-                      </span>
+                      {result.matched ? (
+                        <span className={`tag ${getSeverityClass(result.severity)}`}>
+                          {result.severity}
+                        </span>
+                      ) : result.error ? (
+                        <span className="tag bg-red-500/10 text-red-400 border-red-500/30">失败</span>
+                      ) : (
+                        <span className="tag bg-dark-600 text-dark-400">未匹配</span>
+                      )}
+                      {/* 状态码 */}
+                      {extractStatus(result.response) && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-mono ${
+                          extractStatus(result.response)?.startsWith('2') ? 'bg-green-500/10 text-green-400' :
+                          extractStatus(result.response)?.startsWith('3') ? 'bg-blue-500/10 text-blue-400' :
+                          extractStatus(result.response)?.startsWith('4') ? 'bg-yellow-500/10 text-yellow-400' :
+                          'bg-red-500/10 text-red-400'
+                        }`}>
+                          {extractStatus(result.response)}
+                        </span>
+                      )}
                     </div>
                     <div className="text-sm text-dark-400 truncate mt-1">
-                      {result.host}
+                      {result.host}{result.matched && <span className="text-orange-400 ml-2">— {result.matched}</span>}
+                      {result.error && <span className="text-red-400 ml-2">— {result.error}</span>}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {/* 查看请求响应包按钮 */}
-                    {(result.request || result.response) && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setViewingPacket(result); }}
-                        className="btn btn-secondary btn-sm"
-                        title="查看请求/响应"
-                      >
-                        <Send className="w-4 h-4" />
-                        查看数据包
-                      </button>
-                    )}
+                    {/* 请求/响应包按钮 - 始终可见 */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setViewingPacket(result); }}
+                      className="btn btn-secondary btn-sm"
+                      title="查看请求/响应数据包"
+                    >
+                      <Send className="w-4 h-4" />
+                      数据包
+                    </button>
                     <div className="text-xs text-dark-500">
                       {new Date(result.timestamp).toLocaleString('zh-CN')}
                     </div>
@@ -424,7 +476,7 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
                           {Object.entries(result.extractedData).map(([key, value]) => (
                             <div key={key} className="flex items-center gap-2">
                               <span className="text-dark-500 text-sm">{key}:</span>
-                              <code className="px-2 py-1 rounded bg-dark-900 text-dark-200 
+                              <code className="px-2 py-1 rounded bg-dark-900 text-dark-200
                                              font-mono text-sm">
                                 {value}
                               </code>
@@ -433,6 +485,54 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
                         </div>
                       </div>
                     )}
+
+                    {/* 内嵌请求/响应包预览 */}
+                    <div>
+                      <div className="flex items-center gap-4 mb-2">
+                        <span className="text-sm text-dark-400">数据包</span>
+                        <div className="flex bg-dark-900 rounded-lg p-0.5">
+                          <button
+                            onClick={() => setPacketTab('request')}
+                            className={`px-3 py-1 rounded-md text-xs transition-colors
+                              ${packetTab === 'request' ? 'bg-cyber-500/20 text-cyber-400' : 'text-dark-500 hover:text-dark-300'}`}
+                          >
+                            请求包
+                          </button>
+                          <button
+                            onClick={() => setPacketTab('response')}
+                            className={`px-3 py-1 rounded-md text-xs transition-colors
+                              ${packetTab === 'response' ? 'bg-cyber-500/20 text-cyber-400' : 'text-dark-500 hover:text-dark-300'}`}
+                          >
+                            响应包
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => copyToClipboard(packetTab === 'request' ? (result.request || '') : (result.response || ''))}
+                          className="p-1.5 rounded hover:bg-dark-700 text-dark-400 hover:text-white"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                      {packetTab === 'request' ? (
+                        result.request ? (
+                          <pre className="p-3 rounded-lg bg-dark-950 text-green-400 font-mono text-xs
+                                        overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                            {result.request}
+                          </pre>
+                        ) : (
+                          <div className="p-3 rounded-lg bg-dark-900 text-dark-500 text-xs">无请求数据</div>
+                        )
+                      ) : (
+                        result.response ? (
+                          <pre className="p-3 rounded-lg bg-dark-950 text-cyan-400 font-mono text-xs
+                                        overflow-x-auto whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                            {result.response}
+                          </pre>
+                        ) : (
+                          <div className="p-3 rounded-lg bg-dark-900 text-dark-500 text-xs">无响应数据</div>
+                        )
+                      )}
+                    </div>
 
                     {/* 操作按钮 */}
                     <div className="flex items-center gap-2 pt-2 flex-wrap">
@@ -457,15 +557,19 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
                         </button>
                       )}
 
-                      <a
-                        href={result.host}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => {
+                          try {
+                            BrowserOpenURL(result.host)
+                          } catch {
+                            window.open(result.host, '_blank')
+                          }
+                        }}
                         className="btn btn-secondary btn-sm"
                       >
                         <ExternalLink className="w-4 h-4" />
                         打开目标
-                      </a>
+                      </button>
                       <button
                         onClick={() => copyToClipboard(JSON.stringify(result, null, 2))}
                         className="btn btn-secondary btn-sm"
