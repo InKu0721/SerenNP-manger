@@ -84,9 +84,19 @@ function TemplateList({ templates: allTemplates, loading, onEdit, onNew, onRefre
     level: number
   }
 
+  // 递归汇总子节点数量到父节点
+  const propagateCounts = (node: CategoryNode): number => {
+    let total = node.count
+    node.children.forEach(child => {
+      total += propagateCounts(child)
+    })
+    node.count = total
+    return total
+  }
+
   const categoryTree = useMemo(() => {
     const root = new Map<string, CategoryNode>()
-    
+
     Object.entries(templatesByCategory).forEach(([category, templates]) => {
       // 处理"未分类"特殊 case
       if (category === '未分类') {
@@ -102,10 +112,10 @@ function TemplateList({ templates: allTemplates, loading, onEdit, onNew, onRefre
 
       const parts = category.split('/')
       let current = root
-      
+
       parts.forEach((part, index) => {
         const fullPath = parts.slice(0, index + 1).join('/')
-        
+
         if (!current.has(part)) {
           current.set(part, {
             name: part,
@@ -115,17 +125,20 @@ function TemplateList({ templates: allTemplates, loading, onEdit, onNew, onRefre
             level: index
           })
         }
-        
+
         const node = current.get(part)!
         if (index === parts.length - 1) {
-          // 叶子节点，设置模板数量
-          node.count = templates.length
+          // 叶子节点：累加该分类下的模板数量
+          node.count += templates.length
         }
-        
+
         current = node.children
       })
     })
-    
+
+    // 自底向上汇总：父节点 = 自身 + 所有子节点
+    root.forEach(node => propagateCounts(node))
+
     return root
   }, [templatesByCategory])
 
