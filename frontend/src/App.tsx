@@ -51,6 +51,8 @@ declare global {
           GetScanStatus: (scanId: string) => Promise<any>;
           GetScanResults: (scanId: string) => Promise<any[]>;
           GetAllScans: () => Promise<any[]>;
+          DeleteScan: (scanId: string) => Promise<void>;
+          ExportScanResults: (scanId: string) => Promise<string>;
           ValidatePOCYAML: (content: string) => Promise<void>;
           GetTemplatesDir: () => Promise<string>;
           GetStats: () => Promise<Stats>;

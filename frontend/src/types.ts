@@ -50,6 +50,7 @@ export interface ScanResult {
   host: string;
   matched: string;
   extractedData?: Record<string, string>;
+  error?: string;
   timestamp: string;
   request?: string;
   response?: string;

@@ -136,9 +136,8 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
   })
 
   // 统计：漏洞发现 vs 全部
-  const foundCount = results.filter(r => !!r.matched).length
-  const errorCount = results.filter(r => !!r.error).length
-  const totalCount = results.length
+  const foundCount = results.filter((r: ScanResult) => !!r.matched).length
+  const errorCount = results.filter((r: ScanResult) => !!r.error).length
 
   const severityCounts = results.filter(r => !!r.matched).reduce((acc, r) => {
     const sev = r.severity?.toLowerCase() || 'info'
