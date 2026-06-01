@@ -386,7 +386,7 @@ func (a *App) StartScan(request models.ScanRequest) (string, error) {
 		return "", fmt.Errorf("没有有效的模板")
 	}
 
-	scanID, err := a.scanner.Start(a.ctx, request.Targets, templates, a.pocManager.GetTemplatesDir(), request.Options)
+	scanID, err := a.scanner.Start(a.ctx, request.Targets, templates, a.pocManager.GetTemplatesDir(), request.Options, request.Name)
 	if err != nil {
 		return "", err
 	}

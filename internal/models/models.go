@@ -20,9 +20,10 @@ type POCTemplate struct {
 
 // ScanRequest 扫描请求
 type ScanRequest struct {
-	Targets     []string `json:"targets"`
-	TemplateIDs []string `json:"templateIds"`
+	Targets     []string    `json:"targets"`
+	TemplateIDs []string    `json:"templateIds"`
 	Options     ScanOptions `json:"options"`
+	Name        string      `json:"name,omitempty"` // 任务名称
 }
 
 // ScanOptions 扫描选项
@@ -41,7 +42,8 @@ type ScanOptions struct {
 // ScanStatus 扫描状态
 type ScanStatus struct {
 	ID           string    `json:"id"`
-	Status       string    `json:"status"` // pending, running, completed, failed, stopped
+	Name         string    `json:"name,omitempty"` // 任务名称
+	Status       string    `json:"status"`         // pending, running, completed, failed, stopped
 	Progress     float64   `json:"progress"`
 	Total        int       `json:"total"`
 	Completed    int       `json:"completed"`

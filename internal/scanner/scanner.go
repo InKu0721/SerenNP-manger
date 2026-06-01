@@ -171,8 +171,11 @@ func (s *Scanner) saveScanToDisk(scanID string) {
 }
 
 // Start 开始扫描
-func (s *Scanner) Start(ctx context.Context, targets []string, templates []models.POCTemplate, templatesDir string, opts models.ScanOptions) (string, error) {
+func (s *Scanner) Start(ctx context.Context, targets []string, templates []models.POCTemplate, templatesDir string, opts models.ScanOptions, taskName string) (string, error) {
 	scanID := fmt.Sprintf("scan_%d", time.Now().UnixNano())
+	if taskName != "" {
+		scanID = taskName
+	}
 
 	scanCtx, cancel := context.WithCancel(ctx)
 
@@ -187,6 +190,7 @@ func (s *Scanner) Start(ctx context.Context, targets []string, templates []model
 	status := &models.ScanStatus{
 		ID:          scanID,
 		Status:      "running",
+		Name:        taskName,
 		Total:       len(targets) * len(templates),
 		Completed:   0,
 		Found:       0,

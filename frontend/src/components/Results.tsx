@@ -287,7 +287,7 @@ function Results({ initialScanId, onViewPOC }: ResultsProps) {
               <option value="">选择扫描任务...</option>
               {scans.map(scan => (
                 <option key={scan.id} value={scan.id}>
-                  {scan.id} - {scan.status} ({scan.found} 发现 / {scan.completed} 请求)
+                  {scan.name || scan.id} - {scan.status} ({scan.found} 发现 / {scan.completed} 请求)
                 </option>
               ))}
             </select>
